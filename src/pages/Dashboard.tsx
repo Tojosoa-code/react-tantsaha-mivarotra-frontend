@@ -13,6 +13,7 @@ import {
   LogOut,
   ShoppingBag,
   Truck,
+  Sprout,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -45,15 +46,10 @@ export default function Dashboard() {
       {/* Sidebar */}
       <div className="w-72 border-r bg-card flex flex-col">
         <div className="p-6 border-b flex items-center gap-3">
-          <div className="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center text-white text-3xl">
-            🌾
+          <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground">
+            <Sprout className="w-6 h-6" />
           </div>
-          <div>
-            <span className="text-2xl font-bold text-emerald-800">
-              Tantsaha
-            </span>
-            <span className="text-2xl font-bold">Mivarotra</span>
-          </div>
+          <span className="text-xl font-bold">Tantsaha Mivarotra</span>
         </div>
 
         <div className="flex-1 p-4 space-y-2">

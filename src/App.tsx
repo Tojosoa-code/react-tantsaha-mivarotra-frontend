@@ -13,10 +13,11 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Pages publiques */}
-        <Route path="/" element={<Landing />} />
+        <Route
+          path="/"
+          element={token ? <Navigate to="/dashboard" replace /> : <Landing />}
+        />
 
-        {/* Redirection si déjà connecté */}
         <Route
           path="/login"
           element={token ? <Navigate to="/dashboard" replace /> : <Login />}

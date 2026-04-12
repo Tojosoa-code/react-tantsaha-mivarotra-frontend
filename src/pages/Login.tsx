@@ -12,12 +12,15 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import api from "@/lib/axios";
+import { ArrowLeft, Sprout, Eye, EyeOff, Mail, Lock } from "lucide-react"; // Ajout de Eye et EyeOff
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // Nouvel état pour la visibilité du mot de passe
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,13 +52,20 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
+      <Button
+        className="absolute top-15 left-40"
+        size="icon"
+        onClick={() => navigate("/")}
+      >
+        <ArrowLeft />
+      </Button>
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-3 justify-center mb-4">
-            <div className="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center text-white text-3xl">
-              🌾
+            <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground">
+              <Sprout className="w-6 h-6" />
             </div>
-            <CardTitle className="text-3xl font-bold text-emerald-800">
+            <CardTitle className="text-xl font-bold">
               Tantsaha Mivarotra
             </CardTitle>
           </div>
@@ -68,30 +78,55 @@ export default function Login() {
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="rakoto@gmail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="user@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="pl-10"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pr-10 pl-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
-
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Connexion en cours..." : "Se connecter"}
+              {loading ? (
+                <>
+                  <Spinner data-icon="inline-start" />
+                  <span>Connexion...</span>
+                </>
+              ) : (
+                "Se connecter"
+              )}
             </Button>
           </form>
 

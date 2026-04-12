@@ -19,6 +19,20 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import api from "@/lib/axios";
+import {
+  ArrowLeft,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  User,
+  Phone,
+  Briefcase,
+  Tractor,
+  ShoppingCart,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { formatMadagascarPhone } from "@/helpers/formattage"; // Import de ton helper
 
 export default function Register() {
   const navigate = useNavigate();
@@ -35,11 +49,19 @@ export default function Register() {
     adresse: "",
   });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    if (name === "telephone") {
+      // Application du formatage via le helper
+      setFormData({ ...formData, [name]: formatMadagascarPhone(value) });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -47,7 +69,12 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await api.post("/auth/register", formData);
+      const finalData = {
+        ...formData,
+        telephone: formData.telephone.replace(/\s/g, ""),
+      };
+
+      await api.post("/auth/register", finalData);
       toast.success("Compte créé avec succès !");
       navigate("/login");
     } catch (error: any) {
@@ -61,6 +88,13 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background py-8">
+      <Button
+        className="absolute top-15 left-40"
+        size="icon"
+        onClick={() => navigate("/")}
+      >
+        <ArrowLeft />
+      </Button>
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle className="text-2xl text-center">
@@ -77,23 +111,44 @@ export default function Register() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Email</Label>
-                <Input
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className="pl-10"
+                    placeholder="user@gmail.com"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Mot de passe</Label>
-                <Input
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    className="pl-10 pr-10"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -105,11 +160,24 @@ export default function Register() {
                 onValueChange={(v) => setFormData({ ...formData, role: v })}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <SelectValue placeholder="Sélectionnez un rôle" />
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="producteur">Producteur</SelectItem>
-                  <SelectItem value="acheteur">Acheteur</SelectItem>
+                  <SelectItem value="producteur">
+                    <div className="flex items-center gap-2">
+                      <Tractor className="h-4 w-4" />
+                      <span>Producteur</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="acheteur">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4" />
+                      <span>Acheteur</span>
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -118,36 +186,59 @@ export default function Register() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nom</Label>
-                <Input
-                  name="nom"
-                  value={formData.nom}
-                  onChange={handleChange}
-                  required
-                />
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    name="nom"
+                    value={formData.nom}
+                    onChange={handleChange}
+                    required
+                    className="pl-10"
+                    placeholder="Tojosoa"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Prénom</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    name="prenom"
+                    value={formData.prenom}
+                    onChange={handleChange}
+                    required
+                    className="pl-10"
+                    placeholder="Mahefa"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Téléphone */}
+            <div className="space-y-2">
+              <Label>Téléphone</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  name="prenom"
-                  value={formData.prenom}
+                  name="telephone"
+                  value={formData.telephone}
                   onChange={handleChange}
                   required
+                  className="pl-10"
+                  placeholder="034 49 018 94"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Téléphone</Label>
-              <Input
-                name="telephone"
-                value={formData.telephone}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Création du compte..." : "Créer mon compte"}
+              {loading ? (
+                <>
+                  <Spinner className="mr-2" />
+                  Création du compte...
+                </>
+              ) : (
+                "Créer mon compte"
+              )}
             </Button>
           </form>
 
