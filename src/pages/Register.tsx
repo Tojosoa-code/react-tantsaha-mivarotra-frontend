@@ -89,8 +89,9 @@ export default function Register() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background py-8">
       <Button
-        className="absolute top-15 left-40"
+        className="absolute top-8 left-8"
         size="icon"
+        variant="ghost"
         onClick={() => navigate("/")}
       >
         <ArrowLeft />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,15 +12,34 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import api from "@/lib/axios";
-import { ArrowLeft, Sprout, Eye, EyeOff, Mail, Lock } from "lucide-react"; // Ajout de Eye et EyeOff
+import { ArrowLeft, Sprout, Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // Nouvel état pour la visibilité du mot de passe
+  const [showPassword, setShowPassword] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // Gestion de la redirection avec nettoyage pour la performance
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+
+    if (isRedirecting) {
+      // On attend 3 secondes pour laisser l'animation de la plante se jouer
+      timer = setTimeout(() => {
+        navigate("/dashboard");
+      }, 3000);
+    }
+
+    // Nettoyage si le composant est démonté avant la fin du timer
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isRedirecting, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,26 +54,37 @@ export default function Login() {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
+      // Stockage du token
       localStorage.setItem("token", response.data.access_token);
+
       toast.success("Connexion réussie ! Bienvenue 👋");
 
-      // Redirection selon le rôle (à améliorer plus tard)
-      navigate("/dashboard");
+      // On désactive le loading du bouton et on lance l'overlay de redirection
+      setLoading(false);
+      setIsRedirecting(true);
+
+      // NOTE: On ne met pas de navigate ou de setTimeout ici,
+      // c'est le useEffect au-dessus qui s'en charge.
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.detail || "Impossible de se connecter";
       toast.error(typeof errorMsg === "string" ? errorMsg : "Erreur inconnue");
       console.error(error);
-    } finally {
       setLoading(false);
     }
   };
 
+  // Affichage du loader plein écran pendant la redirection
+  if (isRedirecting) {
+    return <OrganicSproutLoader text="Préparation de votre espace..." />;
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Button
-        className="absolute top-15 left-40"
+        className="absolute top-8 left-8"
         size="icon"
+        variant="ghost"
         onClick={() => navigate("/")}
       >
         <ArrowLeft />
@@ -121,7 +151,7 @@ export default function Login() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
                 <>
-                  <Spinner data-icon="inline-start" />
+                  <Spinner className="mr-3 h-5 w-auto" />
                   <span>Connexion...</span>
                 </>
               ) : (
