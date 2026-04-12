@@ -56,15 +56,11 @@ export default function Login() {
 
       // Stockage du token
       localStorage.setItem("token", response.data.access_token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
 
       toast.success("Connexion réussie ! Bienvenue 👋");
-
-      // On désactive le loading du bouton et on lance l'overlay de redirection
       setLoading(false);
       setIsRedirecting(true);
-
-      // NOTE: On ne met pas de navigate ou de setTimeout ici,
-      // c'est le useEffect au-dessus qui s'en charge.
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.detail || "Impossible de se connecter";

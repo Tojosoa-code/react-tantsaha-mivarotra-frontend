@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-
-// Alternative 1: Utiliser lucide-react (déjà installé avec shadcn)
 import {
   Home,
   PlusCircle,
@@ -15,6 +13,7 @@ import {
   Truck,
   Sprout,
 } from "lucide-react";
+import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -23,21 +22,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) {
+    const storedUser = localStorage.getItem("user");
+
+    if (!token || !storedUser) {
       navigate("/login");
       return;
     }
-    // Pour l'instant on simule le user (on l'améliorera après)
-    setUser({ role: "producteur", prenom: "Jean", nom: "Rakoto" });
-  }, []);
+
+    setUser(JSON.parse(storedUser));
+  }, [navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     toast.success("Déconnexion réussie");
     navigate("/login");
   };
 
-  if (!user) return <div>Chargement...</div>;
+  if (!user)
+    return <OrganicSproutLoader text="Préparation de votre espace..." />;
 
   const isProducteur = user.role === "producteur";
 
@@ -121,7 +124,6 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        {/* Footer Sidebar */}
         <div className="p-4 border-t">
           <Button
             variant="ghost"
@@ -141,7 +143,6 @@ export default function Dashboard() {
             {activeTab === "home" && "Accueil"}
             {activeTab === "matching" && "Matching Intelligent"}
             {activeTab === "route" && "Itinéraire Optimal"}
-            {/* etc. */}
           </h1>
 
           <div className="flex items-center gap-3">
@@ -149,21 +150,23 @@ export default function Dashboard() {
               <p className="text-sm font-medium">
                 {user.prenom} {user.nom}
               </p>
-              <p className="text-xs text-muted-foreground">{user.role}</p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {user.role}
+              </p>
             </div>
             <UserCircle className="w-9 h-9 text-emerald-600" />
           </div>
         </header>
 
-        {/* Zone de contenu selon l'onglet */}
         <main className="p-8">
           {activeTab === "home" && (
             <div className="text-center py-20">
               <h2 className="text-4xl font-bold mb-4">
-                Bienvenue sur Tantsaha Mivarotra !
+                Bienvenue, {user.prenom} !
               </h2>
               <p className="text-xl text-muted-foreground">
-                Tout est prêt pour une version fonctionnelle.
+                Vous êtes connecté en tant que{" "}
+                <span className="capitalize font-medium">{user.role}</span>
               </p>
             </div>
           )}
@@ -178,8 +181,6 @@ export default function Dashboard() {
               </p>
             </div>
           )}
-
-          {/* Tu pourras ajouter les autres onglets plus tard */}
         </main>
       </div>
     </div>

@@ -30,12 +30,16 @@ import {
   Briefcase,
   Tractor,
   ShoppingCart,
+  Navigation,
+  MapPin,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { formatMadagascarPhone } from "@/helpers/formattage"; // Import de ton helper
+import { formatMadagascarPhone } from "@/helpers/formattage";
+import { REGIONS, REGION_COORDS } from "@/helpers/region";
 
 export default function Register() {
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -48,39 +52,82 @@ export default function Register() {
     region: "Analamanga",
     adresse: "",
   });
+
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-  ) => {
+  const handleChange = (e: any) => {
     const { name, value } = e.target;
 
     if (name === "telephone") {
-      // Application du formatage via le helper
       setFormData({ ...formData, [name]: formatMadagascarPhone(value) });
+    } else if (name === "latitude" || name === "longitude") {
+      setFormData({ ...formData, [name]: parseFloat(value) });
     } else {
       setFormData({ ...formData, [name]: value });
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const detectLocation = () => {
+    setGettingLocation(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = parseFloat(position.coords.latitude.toFixed(6));
+        const lng = parseFloat(position.coords.longitude.toFixed(6));
+
+        const detectedRegion = detectRegionFromCoords(lat, lng);
+
+        setFormData((prev) => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng,
+          region: detectedRegion || prev.region,
+        }));
+
+        toast.success(
+          detectedRegion
+            ? `Position détectée : ${detectedRegion}`
+            : "Position détectée",
+        );
+
+        setGettingLocation(false);
+      },
+      () => {
+        toast.error("Impossible d'obtenir votre position.");
+        setGettingLocation(false);
+      },
+    );
+  };
+
+  const handleRegister = async (e: any) => {
     e.preventDefault();
+
+    const cleanPhone = formData.telephone.replace(/\s/g, "");
+
+    if (!/^(032|033|034|037|038)\d{7}$/.test(cleanPhone)) {
+      toast.error("Numéro invalide (032, 033, 034, 037, 038)");
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast.error("Mot de passe minimum 6 caractères");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const finalData = {
+      await api.post("/auth/register", {
         ...formData,
-        telephone: formData.telephone.replace(/\s/g, ""),
-      };
+        telephone: cleanPhone,
+      });
 
-      await api.post("/auth/register", finalData);
-      toast.success("Compte créé avec succès !");
+      toast.success("Compte créé !");
       navigate("/login");
     } catch (error: any) {
-      toast.error(
-        error.response?.data?.detail || "Erreur lors de l'inscription",
-      );
+      toast.error(error?.response?.data?.detail || "Erreur");
     } finally {
       setLoading(false);
     }
@@ -96,6 +143,7 @@ export default function Register() {
       >
         <ArrowLeft />
       </Button>
+
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle className="text-2xl text-center">
@@ -141,7 +189,7 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4" />
@@ -160,10 +208,10 @@ export default function Register() {
                 value={formData.role}
                 onValueChange={(v) => setFormData({ ...formData, role: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <div className="flex items-center gap-2">
                     <Briefcase className="h-4 w-4 text-muted-foreground" />
-                    <SelectValue placeholder="Sélectionnez un rôle" />
+                    <SelectValue />
                   </div>
                 </SelectTrigger>
                 <SelectContent>
@@ -195,7 +243,7 @@ export default function Register() {
                     onChange={handleChange}
                     required
                     className="pl-10"
-                    placeholder="Tojosoa"
+                    placeholder="Rakoto"
                   />
                 </div>
               </div>
@@ -209,7 +257,7 @@ export default function Register() {
                     onChange={handleChange}
                     required
                     className="pl-10"
-                    placeholder="Mahefa"
+                    placeholder="Jean"
                   />
                 </div>
               </div>
@@ -217,7 +265,7 @@ export default function Register() {
 
             {/* Téléphone */}
             <div className="space-y-2">
-              <Label>Téléphone</Label>
+              <Label>Téléphone (10 chiffres)</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -228,6 +276,65 @@ export default function Register() {
                   className="pl-10"
                   placeholder="034 49 018 94"
                 />
+              </div>
+            </div>
+
+            {/* Région */}
+            <p className="font-semibold mb-1">
+              Région{" "}
+              <span className="font-normal text-muted-foreground">
+                (Utilisez votre position actuelle ou choisissez une région
+                manuellement)
+              </span>
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Select
+                  value={formData.region}
+                  onValueChange={(v) => {
+                    const coords = REGION_COORDS[v];
+
+                    setFormData((prev) => ({
+                      ...prev,
+                      region: v,
+                      latitude: coords?.lat ?? prev.latitude,
+                      longitude: coords?.lng ?? prev.longitude,
+                    }));
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <SelectValue />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REGIONS.map((region) => (
+                      <SelectItem key={region} value={region}>
+                        {region}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={detectLocation}
+                  disabled={gettingLocation}
+                >
+                  <Navigation className="w-4 h-4" />
+                  {gettingLocation ? (
+                    <>
+                      <Spinner className="mx-3 h-5 w-auto" />
+                      <span>Détection en cours...</span>
+                    </>
+                  ) : (
+                    "Utiliser ma position actuelle"
+                  )}
+                </Button>
               </div>
             </div>
 

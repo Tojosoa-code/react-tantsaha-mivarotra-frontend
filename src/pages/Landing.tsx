@@ -3,7 +3,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Link } from "react-router-dom";
-import { useEffect } from "react";
 import {
   Sprout,
   ArrowRight,
@@ -24,6 +23,7 @@ import {
   LogInIcon,
   Star,
   Quote,
+  User,
 } from "lucide-react";
 import AnimatedStat from "@/components/AnimatedStat";
 import FadeInSection from "@/components/FadeInSection";
@@ -61,7 +61,7 @@ export default function Landing() {
             </a>
             <Button variant="outline" asChild>
               <Link to="/login">
-                Connexion <LogInIcon size={12} />
+                Mon compte <User size={12} />
               </Link>
             </Button>
             <Button asChild className="gap-2">
@@ -112,14 +112,6 @@ export default function Landing() {
                       Commencer gratuitement
                       <ArrowRight className="w-4 h-4" />
                     </Link>
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="text-base px-8"
-                    asChild
-                  >
-                    <Link to="/login">Voir la démo</Link>
                   </Button>
                 </div>
               </FadeInSection>
@@ -316,7 +308,7 @@ export default function Landing() {
                 <h2 className="text-4xl font-bold">
                   Tous les outils dont vous avez besoin
                 </h2>
-                <p className="text-xl text-muted-foreground">
+                <p className="text-[1.2rem] text-muted-foreground">
                   Une plateforme complète pour gérer votre activité agricole de
                   A à Z
                 </p>
