@@ -44,6 +44,12 @@ import {
   Banknote,
   Store,
   Flame,
+  TrendingUp,
+  Users,
+  Target,
+  Handshake,
+  Mail,
+  Phone,
 } from "lucide-react";
 import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
@@ -105,9 +111,7 @@ export default function Dashboard() {
   // Config dynamique
   const isProd = user?.role === "producteur";
   const primaryLabel = isProd ? "Offres" : "Demandes";
-  const marketLabel = isProd
-    ? "Demandes des acheteurs "
-    : "Offres des producteurs ";
+  const marketLabel = isProd ? "Demandes" : "Offres";
   const primaryEndpoint = isProd ? "/offers" : "/demands";
   const myEndpoint = isProd ? "/users/me/offers" : "/users/me/demands";
   const marketEndpoint = isProd ? "/demands" : "/offers";
@@ -132,7 +136,7 @@ export default function Dashboard() {
       setHasMoreMy(data.length === 12);
       setMyPages(page);
     } catch {
-      toast.error("Erreur chargement");
+      toast.error("Erreur de chargement");
     } finally {
       setLoading(false);
       setLoadingMoreMy(false);
@@ -143,41 +147,22 @@ export default function Dashboard() {
     if (!user) return;
     setLoading(true);
     try {
-      let currentPage = page;
-      let filtered: any[] = [];
-      let backendTotal = 0;
-      let backendTotalPages = 0;
+      // ✅ CORRECTION : Utilise exclude_current_user=true
+      const res = await api.get(
+        `${primaryEndpoint}?page=${page}&page_size=12&exclude_current_user=true`,
+      );
 
-      // Saute automatiquement les pages devenues vides après le filtrage (max 3 sauts)
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await api.get(
-          `${primaryEndpoint}?page=${currentPage}&page_size=12`,
-        );
-        const raw = res.data.items || res.data || [];
-        backendTotal = res.data.total ?? raw.length;
-        backendTotalPages =
-          (res.data.total_pages ?? Math.ceil(backendTotal / 12)) || 1;
+      const items = res.data.items || [];
+      const total = res.data.total ?? 0;
+      const total_pages = res.data.total_pages ?? 1;
 
-        filtered = raw.filter(
-          (i: any) => (isProd ? i.producteur_id : i.acheteur_id) !== user.id,
-        );
-
-        // Si on trouve des items OU qu'on est à la dernière page, on arrête
-        if (filtered.length > 0 || currentPage >= backendTotalPages) break;
-        currentPage++;
-      }
-
-      setPrimaryItems(filtered);
+      setPrimaryItems(items);
       setPaginationData((prev) => ({
         ...prev,
-        primary: {
-          total: backendTotal,
-          page: currentPage,
-          total_pages: backendTotalPages,
-        },
+        primary: { total, page, total_pages },
       }));
     } catch {
-      toast.error("Erreur chargement");
+      toast.error("Erreur de chargement");
     } finally {
       setLoading(false);
     }
@@ -188,18 +173,17 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const res = await api.get(`${marketEndpoint}?page=${page}&page_size=12`);
-      const rawItems = res.data.items || res.data || [];
+      const items = res.data.items || [];
+      const total = res.data.total ?? 0;
+      const total_pages = res.data.total_pages ?? 1;
 
-      const total = res.data.total ?? rawItems.length;
-      const total_pages = res.data.total_pages ?? Math.ceil(total / 12) ?? 1;
-
-      setMarketplaceItems(rawItems);
+      setMarketplaceItems(items);
       setPaginationData((prev) => ({
         ...prev,
         market: { total, page, total_pages },
       }));
     } catch {
-      toast.error("Erreur marketplace");
+      toast.error("Erreur de chargement");
     } finally {
       setLoading(false);
     }
@@ -211,13 +195,14 @@ export default function Dashboard() {
   };
 
   const handleDelete = async (itemId: number) => {
-    if (!window.confirm("Supprimer cet élément ?")) return;
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cet élément ?"))
+      return;
     try {
       await api.delete(`${isProd ? "/offers" : "/demands"}/${itemId}`);
-      toast.success("Élément supprimé");
+      toast.success("Élément supprimé avec succès");
       loadMyItems(user, 1);
     } catch {
-      toast.error("Erreur suppression");
+      toast.error("Erreur lors de la suppression");
     }
   };
 
@@ -227,23 +212,22 @@ export default function Dashboard() {
         activeTab === "marketplace" ? marketEndpoint : primaryEndpoint;
       const res = await api.get(`${endpoint}/${itemId}`);
       setSelectedItem(res.data);
-      console.log(selectedItem);
       setDetailsOpen(true);
     } catch {
-      toast.error("Erreur détails");
+      toast.error("Erreur lors du chargement des détails");
     }
   };
 
   const handleLogout = () => {
     localStorage.clear();
-    toast.success("Déconnexion réussie");
+    toast.success("À bientôt !");
     navigate("/login");
   };
 
   if (!user)
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <OrganicSproutLoader text="Préparation de votre espace..." />
       </div>
     );
 
@@ -308,24 +292,45 @@ export default function Dashboard() {
     );
   };
 
+  // ✅ CORRECTION : Fonction pour déterminer quel utilisateur afficher dans le modal
+  const getDisplayUser = () => {
+    if (!selectedItem) return null;
+
+    if (activeTab === "marketplace") {
+      // Marketplace : producteur voit acheteurs, acheteur voit producteurs
+      return isProd ? selectedItem.acheteur : selectedItem.producteur;
+    } else {
+      // All-primary : producteur voit producteurs, acheteur voit acheteurs
+      return isProd ? selectedItem.producteur : selectedItem.acheteur;
+    }
+  };
+
+  const displayUser = getDisplayUser();
+
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-gradient-to-br from-background to-muted/20">
       {/* Sidebar */}
-      <div className="w-72 border-r bg-card flex flex-col">
-        <div className="p-6 border-b flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground">
-            <Sprout className="w-6 h-6" />
+      <div className="w-72 border-r bg-card/95 backdrop-blur-sm flex flex-col shadow-lg">
+        <div className="p-6 border-b flex items-center gap-3 bg-gradient-to-r from-primary/10 to-primary/5">
+          <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center text-primary-foreground shadow-md">
+            <Sprout className="w-7 h-7" />
           </div>
-          <span className="text-xl font-bold">Tantsaha Mivarotra</span>
+          <div>
+            <span className="text-xl font-bold block">Tantsaha</span>
+            <span className="text-xs text-muted-foreground">
+              Marketplace Agricole
+            </span>
+          </div>
         </div>
 
-        <div className="flex-1 p-4 space-y-2">
+        <div className="flex-1 p-4 space-y-2 overflow-y-auto">
           <Button
             variant={activeTab === "home" ? "default" : "ghost"}
-            className="w-full justify-start gap-3"
+            className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
             onClick={() => setActiveTab("home")}
           >
-            <Home className="w-5 h-5" /> Accueil
+            <Home className="w-5 h-5" />
+            <span>Tableau de bord</span>
           </Button>
 
           {/* MENU PRIMAIRE */}
@@ -339,33 +344,35 @@ export default function Dashboard() {
                   ? "default"
                   : "ghost"
               }
-              className="w-full justify-start gap-3"
+              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
             >
               {isProd ? (
                 <ShoppingBag className="w-5 h-5" />
               ) : (
                 <Truck className="w-5 h-5" />
               )}
-              {primaryLabel}
+              <span className="flex-1 text-left">Mes {primaryLabel}</span>
               <ChevronDown
-                className={`w-4 h-4 ml-auto transition-transform ${dropdowns.primary ? "rotate-180" : ""}`}
+                className={`w-4 h-4 transition-transform ${dropdowns.primary ? "rotate-180" : ""}`}
               />
             </Button>
             {dropdowns.primary && (
-              <div className="pl-4 py-1 space-y-1">
+              <div className="pl-4 py-1 space-y-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "my-primary" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3"
+                  className="w-full justify-start gap-3 text-sm"
                   onClick={() => setActiveTab("my-primary")}
                 >
-                  Mes {primaryLabel.toLowerCase()}
+                  <Package className="w-4 h-4" />
+                  Gérer mes {primaryLabel.toLowerCase()}
                 </Button>
                 <Button
                   variant={activeTab === "all-primary" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3"
+                  className="w-full justify-start gap-3 text-sm"
                   onClick={() => setActiveTab("all-primary")}
                 >
-                  Toutes les {primaryLabel.toLowerCase()}
+                  <TrendingUp className="w-4 h-4" />
+                  Analyser le marché
                 </Button>
               </div>
             )}
@@ -378,55 +385,62 @@ export default function Dashboard() {
           >
             <Button
               variant={activeTab === "marketplace" ? "default" : "ghost"}
-              className="w-full justify-start gap-3"
+              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
             >
-              <Store className="w-5 h-5" /> Marketplace
+              <Store className="w-5 h-5" />
+              <span className="flex-1 text-left">Marketplace</span>
               <ChevronDown
-                className={`w-4 h-4 ml-auto transition-transform ${dropdowns.market ? "rotate-180" : ""}`}
+                className={`w-4 h-4 transition-transform ${dropdowns.market ? "rotate-180" : ""}`}
               />
             </Button>
             {dropdowns.market && (
-              <div className="pl-4 py-1 space-y-1">
+              <div className="pl-4 py-1 space-y-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "marketplace" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3"
+                  className="w-full justify-start gap-3 text-sm"
                   onClick={() => setActiveTab("marketplace")}
                 >
-                  <>
-                    <Flame className="w-5 h-5" />
-                    {marketLabel}
-                  </>
+                  <Flame className="w-4 h-4" />
+                  {isProd ? "Opportunités d'achat" : "Opportunités de vente"}
                 </Button>
               </div>
             )}
           </div>
 
-          <Button
-            variant={activeTab === "matching" ? "default" : "ghost"}
-            className="w-full justify-start gap-3"
-            onClick={() => setActiveTab("matching")}
-          >
-            <Route className="w-5 h-5" /> Matching Intelligent
-          </Button>
-          <Button
-            variant={activeTab === "route" ? "default" : "ghost"}
-            className="w-full justify-start gap-3"
-            onClick={() => setActiveTab("route")}
-          >
-            <Route className="w-5 h-5" /> Itinéraire Optimal
-          </Button>
+          <div className="pt-2 border-t">
+            <Button
+              variant={activeTab === "matching" ? "default" : "ghost"}
+              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+              onClick={() => setActiveTab("matching")}
+            >
+              <Target className="w-5 h-5" />
+              Matching Intelligent
+            </Button>
+            <Button
+              variant={activeTab === "route" ? "default" : "ghost"}
+              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+              onClick={() => setActiveTab("route")}
+            >
+              <Route className="w-5 h-5" />
+              Optimisation de tournée
+            </Button>
+          </div>
         </div>
 
-        <div className="p-4 border-t mt-auto">
-          <div className="bg-muted rounded-lg p-3 mb-3">
+        <div className="p-4 border-t mt-auto bg-muted/30">
+          <div className="bg-card rounded-lg p-3 mb-3 shadow-sm border">
             <div className="flex items-center gap-3">
-              <UserCircle className="w-10 h-10 text-primary" />
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-bold shadow">
+                {user.prenom?.[0]}
+                {user.nom?.[0]}
+              </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">
+                <p className="font-semibold truncate text-sm">
                   {user.prenom} {user.nom}
                 </p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  {user.role}
+                <p className="text-xs text-muted-foreground capitalize flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {user.role === "producteur" ? "Producteur" : "Acheteur"}
                 </p>
               </div>
             </div>
@@ -436,26 +450,28 @@ export default function Dashboard() {
             className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50"
             onClick={handleLogout}
           >
-            <LogOut className="w-5 h-5" /> Déconnexion
+            <LogOut className="w-5 h-5" />
+            Déconnexion
           </Button>
         </div>
       </div>
 
       {/* Contenu Principal */}
       <div className="flex-1 overflow-auto">
-        <header className="h-16 border-b bg-white px-8 flex items-center justify-between sticky top-0 z-10">
-          <h1 className="text-2xl font-semibold">
-            {activeTab === "home" && "Accueil"}
+        <header className="h-16 border-b bg-card/95 backdrop-blur-sm px-8 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+            {activeTab === "home" && "Tableau de bord"}
             {activeTab === "my-primary" && `Mes ${primaryLabel}`}
-            {activeTab === "all-primary" && `Toutes les ${primaryLabel}`}
+            {activeTab === "all-primary" && "Analyse du marché"}
             {activeTab === "marketplace" &&
-              `Marketplace - ${isProd ? "Demandes" : "Offres"}`}
+              (isProd ? "Opportunités d'achat" : "Opportunités de vente")}
             {activeTab === "matching" && "Matching Intelligent"}
-            {activeTab === "route" && "Itinéraire Optimal"}
+            {activeTab === "route" && "Optimisation de tournée"}
           </h1>
           <Button
             size="sm"
             variant="outline"
+            className="gap-2 hover:bg-primary/10"
             onClick={() => {
               if (activeTab === "my-primary") loadMyItems(user, 1);
               if (activeTab === "all-primary")
@@ -464,66 +480,154 @@ export default function Dashboard() {
                 loadMarketplaceItems(paginationData.market.page);
             }}
           >
-            <RefreshCw className="w-4 h-4 mr-2" /> Actualiser
+            <RefreshCw className="w-4 h-4" />
+            Actualiser
           </Button>
         </header>
 
         <main className="p-8">
+          {/* ACCUEIL */}
           {activeTab === "home" && (
-            <div className="max-w-4xl mx-auto">
-              <div className="text-center py-16 mb-8">
+            <div className="max-w-6xl mx-auto">
+              <div className="text-center py-12 mb-12 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl p-8">
+                <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-primary/10 rounded-full">
+                  <Handshake className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-medium text-primary">
+                    Plateforme de mise en relation
+                  </span>
+                </div>
                 <h2 className="text-4xl font-bold mb-4">
                   Bienvenue, {user.prenom} !
                 </h2>
-                <p className="text-muted-foreground text-lg">
-                  Plateforme de mise en relation agriculteurs - acheteurs
+                <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                  Connectez-vous directement avec{" "}
+                  {isProd ? "des acheteurs" : "des producteurs"} locaux et
+                  développez votre activité agricole en toute confiance
                 </p>
               </div>
-              <div className="grid md:grid-cols-3 gap-6">
+
+              <div className="grid md:grid-cols-3 gap-6 mb-8">
                 <Card
-                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
                   onClick={() => setActiveTab("my-primary")}
                 >
                   <CardContent className="pt-6 text-center">
-                    {isProd ? (
-                      <ShoppingBag className="w-12 h-12 mx-auto mb-4 text-primary" />
-                    ) : (
-                      <Truck className="w-12 h-12 mx-auto mb-4 text-primary" />
-                    )}
-                    <h3 className="font-semibold text-lg mb-2">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      {isProd ? (
+                        <ShoppingBag className="w-8 h-8 text-white" />
+                      ) : (
+                        <Truck className="w-8 h-8 text-white" />
+                      )}
+                    </div>
+                    <h3 className="font-bold text-lg mb-2">
                       Mes {primaryLabel}
                     </h3>
-                    <p className="text-3xl font-bold text-primary">
+                    <p className="text-4xl font-bold text-primary mb-2">
                       {myItems.length}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {isProd ? "Produits disponibles" : "Demandes actives"}
                     </p>
                   </CardContent>
                 </Card>
+
                 <Card
-                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
                   onClick={() => setActiveTab("all-primary")}
                 >
                   <CardContent className="pt-6 text-center">
-                    <Eye className="w-12 h-12 mx-auto mb-4 text-primary" />
-                    <h3 className="font-semibold text-lg mb-2">
-                      Analyser le marché
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <TrendingUp className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="font-bold text-lg mb-2">
+                      Analyse du marché
                     </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Voir {primaryLabel.toLowerCase()} des autres
+                    <p className="text-sm text-muted-foreground mt-3">
+                      Suivez les tendances et ajustez vos prix en temps réel
                     </p>
                   </CardContent>
                 </Card>
+
                 <Card
-                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
                   onClick={() => setActiveTab("marketplace")}
                 >
                   <CardContent className="pt-6 text-center">
-                    <Search className="w-12 h-12 mx-auto mb-4 text-primary" />
-                    <h3 className="font-semibold text-lg mb-2">Opportunités</h3>
-                    <p className="text-sm text-muted-foreground">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Flame className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="font-bold text-lg mb-2">
+                      Opportunités en direct
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-3">
                       {isProd
-                        ? "Acheteurs en recherche"
-                        : "Producteurs disponibles"}
+                        ? "Découvrez les demandes d'achat près de chez vous"
+                        : "Trouvez les meilleurs produits locaux disponibles"}
                     </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Stats supplémentaires */}
+              <div className="grid md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                        <Package className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{myItems.length}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Publications actives
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <Eye className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">-</p>
+                        <p className="text-xs text-muted-foreground">
+                          Vues cette semaine
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                        <Users className="w-5 h-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">-</p>
+                        <p className="text-xs text-muted-foreground">
+                          Contacts établis
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                        <Handshake className="w-5 h-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">-</p>
+                        <p className="text-xs text-muted-foreground">
+                          Transactions
+                        </p>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -532,134 +636,201 @@ export default function Dashboard() {
 
           {/* TABLEAU MES ITEMS (Pagination Infinie) */}
           {activeTab === "my-primary" && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>
-                  Mes {primaryLabel} ({myItems.length})
-                </CardTitle>
+            <Card className="shadow-lg">
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-primary" />
+                    Mes {primaryLabel}
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {myItems.length}{" "}
+                    {isProd
+                      ? "produit(s) disponible(s)"
+                      : "demande(s) active(s)"}
+                  </p>
+                </div>
                 <Button
                   onClick={() =>
                     navigate(isProd ? "/new-offer" : "/new-demand")
                   }
-                  className="gap-2"
+                  className="gap-2 shadow-sm"
                 >
-                  <PlusCircle className="w-4 h-4" />{" "}
-                  {isProd ? "Créer une offre" : "Poster une demande"}
+                  <PlusCircle className="w-4 h-4" />
+                  {isProd ? "Nouvelle offre" : "Nouvelle demande"}
                 </Button>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6">
                 {loading ? (
-                  <div className="flex justify-center py-8">
-                    <OrganicSproutLoader text="Chargement..." />
+                  <div className="flex justify-center py-16">
+                    <OrganicSproutLoader text="Chargement de vos publications..." />
                   </div>
                 ) : myItems.length === 0 ? (
-                  <div className="text-center py-16">
-                    <p className="text-muted-foreground text-lg mb-4">
-                      Aucun élément publié.
+                  <div className="text-center py-20">
+                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
+                      <Package className="w-10 h-10 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2">
+                      {isProd
+                        ? "Commencez à vendre vos produits"
+                        : "Publiez votre première demande"}
+                    </h3>
+                    <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                      {isProd
+                        ? "Présentez vos produits à des milliers d'acheteurs potentiels en quelques clics"
+                        : "Trouvez les meilleurs producteurs locaux pour vos besoins"}
                     </p>
                     <Button
+                      size="lg"
                       onClick={() =>
                         navigate(isProd ? "/new-offer" : "/new-demand")
                       }
+                      className="gap-2"
                     >
-                      <PlusCircle className="w-4 h-4 mr-2" /> Créer votre
-                      premier élément
+                      <PlusCircle className="w-5 h-5" />
+                      {isProd
+                        ? "Créer ma première offre"
+                        : "Créer ma première demande"}
                     </Button>
                   </div>
                 ) : (
                   <>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Produit</TableHead>
-                          <TableHead>Quantité</TableHead>
-                          <TableHead>
-                            {isProd ? "Prix / Unité" : "Budget Max"}
-                          </TableHead>
-                          <TableHead>Région</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {myItems.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary">
-                                  <Package className="w-4 h-4" />
-                                </div>
-                                <span className="font-medium">
-                                  {item.product?.nom ||
-                                    `Produit #${item.product_id}`}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Scale className="w-4 h-4 text-muted-foreground" />
-                                {Number(item.quantite)}{" "}
-                                {item.product?.unite || "kg"}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Banknote className="w-4 h-4 text-muted-foreground" />
-                                {isProd ? item.prix_unitaire : item.budget_max}{" "}
-                                Ar
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="gap-1">
-                                <MapPin className="w-3 h-3" /> {item.region}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <Calendar className="w-4 h-4" />
-                                {new Date(item.created_at).toLocaleDateString(
-                                  "fr-FR",
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => handleEdit(item)}
-                                  title="Modifier"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="icon"
-                                  onClick={() => handleDelete(item.id)}
-                                  title="Supprimer"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
+                    <div className="rounded-lg border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="font-semibold">
+                              Produit
+                            </TableHead>
+                            <TableHead className="font-semibold">
+                              Quantité
+                            </TableHead>
+                            <TableHead className="font-semibold">
+                              {isProd ? "Prix unitaire" : "Budget maximum"}
+                            </TableHead>
+                            <TableHead className="font-semibold">
+                              Localisation
+                            </TableHead>
+                            <TableHead className="font-semibold">
+                              Date de publication
+                            </TableHead>
+                            <TableHead className="text-right font-semibold">
+                              Actions
+                            </TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {myItems.map((item) => (
+                            <TableRow
+                              key={item.id}
+                              className="hover:bg-muted/30 transition-colors"
+                            >
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+                                    <Package className="w-5 h-5 text-primary" />
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">
+                                      {item.product?.nom ||
+                                        `Produit #${item.product_id}`}
+                                    </p>
+                                    {item.product?.categorie && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {item.product.categorie}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Scale className="w-4 h-4 text-muted-foreground" />
+                                  <span className="font-medium">
+                                    {Number(item.quantite)}{" "}
+                                    {item.product?.unite || "kg"}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Banknote className="w-4 h-4 text-green-600" />
+                                  <span className="font-semibold text-green-600">
+                                    {(isProd
+                                      ? item.prix_unitaire
+                                      : item.budget_max
+                                    ).toLocaleString()}{" "}
+                                    Ar
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="gap-1.5">
+                                  <MapPin className="w-3 h-3" />
+                                  {item.region}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                                  <Calendar className="w-4 h-4" />
+                                  {new Date(item.created_at).toLocaleDateString(
+                                    "fr-FR",
+                                    {
+                                      day: "numeric",
+                                      month: "short",
+                                      year: "numeric",
+                                    },
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => handleEdit(item)}
+                                    title="Modifier"
+                                    className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => handleDelete(item.id)}
+                                    title="Supprimer"
+                                    className="hover:bg-red-50 hover:text-red-600 hover:border-red-300"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                     {hasMoreMy && (
                       <div
                         ref={loadMoreRef}
-                        className="flex justify-center py-4"
+                        className="flex justify-center py-6 border-t mt-6"
                       >
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           onClick={() => loadMyItems(user, myPages + 1, true)}
                           disabled={loadingMoreMy}
+                          className="gap-2"
                         >
                           {loadingMoreMy ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Chargement...
+                            </>
                           ) : (
-                            "📥 Charger plus"
+                            <>
+                              <RefreshCw className="w-4 h-4" />
+                              Charger plus de résultats
+                            </>
                           )}
                         </Button>
                       </div>
@@ -673,60 +844,65 @@ export default function Dashboard() {
           {/* TOUTES LES ... (Pagination 1,2,3) */}
           {activeTab === "all-primary" && (
             <div className="space-y-6">
-              <Card>
+              <Card className="shadow-sm">
                 <CardContent className="pt-6">
-                  <div className="relative max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder={`Rechercher ${primaryLabel.toLowerCase()}...`}
-                      className="pl-10"
-                    />
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Input
+                        placeholder={`Rechercher parmi les ${primaryLabel.toLowerCase()}...`}
+                        className="pl-10"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <TrendingUp className="w-4 h-4" />
+                      <span>Analyse de la concurrence</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
+
               {loading ? (
-                <div className="flex justify-center py-16">
-                  <OrganicSproutLoader text="Chargement..." />
+                <div className="flex justify-center py-20">
+                  <OrganicSproutLoader text="Analyse du marché en cours..." />
                 </div>
               ) : primaryItems.length === 0 ? (
-                <Card>
-                  <CardContent className="py-16 text-center">
-                    <Eye className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground text-lg mb-2">
-                      Aucune {primaryLabel.toLowerCase()} sur cette page
+                <Card className="shadow-sm">
+                  <CardContent className="py-20 text-center">
+                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
+                      <Eye className="w-10 h-10 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2">
+                      Aucune donnée disponible pour le moment
+                    </h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      Les {primaryLabel.toLowerCase()} de vos concurrents
+                      n'apparaissent pas ici pour vous permettre une analyse
+                      objective du marché
                     </p>
-                    <p className="text-sm text-muted-foreground/80">
-                      (Vos propres {primaryLabel.toLowerCase()} sont
-                      automatiquement masquées pour analyser la concurrence)
-                    </p>
-                    {paginationData.primary.page <
-                      paginationData.primary.total_pages && (
-                      <Button
-                        variant="link"
-                        className="mt-4"
-                        onClick={() =>
-                          loadPrimaryItems(paginationData.primary.page + 1)
-                        }
-                      >
-                        Voir la page suivante →
-                      </Button>
-                    )}
                   </CardContent>
                 </Card>
               ) : (
                 <>
-                  <p className="text-sm text-muted-foreground">
-                    {primaryItems.length} résultat(s) affiché(s)
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      <span className="font-medium">
+                        {primaryItems.length}
+                      </span>{" "}
+                      {primaryLabel.toLowerCase()} disponible(s)
+                    </p>
+                  </div>
+
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {primaryItems.map((item) => (
                       <Card
                         key={item.id}
-                        className="hover:shadow-xl transition-all border-2 hover:border-primary/50"
+                        className="hover:shadow-xl transition-all border-2 hover:border-primary/50 group"
                       >
                         <CardContent className="p-6">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-bold text-lg">
                               {isProd
                                 ? item.producteur?.prenom?.[0]
                                 : item.acheteur?.prenom?.[0]}
@@ -737,58 +913,74 @@ export default function Dashboard() {
                                   ? `${item.producteur?.prenom} ${item.producteur?.nom}`
                                   : `${item.acheteur?.prenom} ${item.acheteur?.nom}`}
                               </p>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                                 <MapPin className="w-3 h-3" />
                                 {item.region}
                               </div>
                             </div>
                           </div>
-                          <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-                            <Package className="w-5 h-5 text-primary" />
-                            {item.product?.nom || `Produit #${item.product_id}`}
-                          </h3>
-                          <div className="space-y-2 mb-4 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">
-                                Quantité
-                              </span>
-                              <span className="font-medium">
-                                {Number(item.quantite) +
-                                  " " +
-                                  item.product.unite}
-                              </span>
+
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Package className="w-5 h-5 text-primary" />
+                              <h3 className="font-bold text-lg">
+                                {item.product?.nom ||
+                                  `Produit #${item.product_id}`}
+                              </h3>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">
-                                {isProd ? "Prix" : "Budget"}
-                              </span>
-                              <span className="font-medium text-primary">
-                                {isProd ? item.prix_unitaire : item.budget_max}{" "}
-                                Ar
-                              </span>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div className="flex flex-col gap-1">
+                                <span className="text-muted-foreground text-xs">
+                                  Quantité
+                                </span>
+                                <span className="font-semibold flex items-center gap-1">
+                                  <Scale className="w-3 h-3" />
+                                  {Number(item.quantite)} {item.product?.unite}
+                                </span>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <span className="text-muted-foreground text-xs">
+                                  {isProd ? "Prix" : "Budget"}
+                                </span>
+                                <span className="font-semibold text-green-600 flex items-center gap-1">
+                                  <Banknote className="w-3 h-3" />
+                                  {(isProd
+                                    ? item.prix_unitaire
+                                    : item.budget_max
+                                  ).toLocaleString()}{" "}
+                                  Ar
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <div className="pt-4 border-t flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+
+                          <div className="pt-4 border-t mt-4 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                               <Calendar className="w-3 h-3" />
                               {new Date(item.created_at).toLocaleDateString(
                                 "fr-FR",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                },
                               )}
                             </span>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleViewDetails(item.id)}
+                              className="gap-2 group-hover:bg-primary group-hover:text-white transition-colors"
                             >
-                              <Eye className="w-4 h-4 mr-2" />
-                              Détails
+                              <Eye className="w-4 h-4" />
+                              Voir plus
                             </Button>
                           </div>
                         </CardContent>
                       </Card>
                     ))}
                   </div>
-                  {/* ✅ Pagination fiable grâce à auto-skip + total_pages backend */}
+
                   <StandardPagination
                     page={paginationData.primary.page}
                     totalPages={paginationData.primary.total_pages}
@@ -802,43 +994,67 @@ export default function Dashboard() {
           {/* MARKETPLACE (Pagination 1,2,3) */}
           {activeTab === "marketplace" && (
             <div className="space-y-6">
-              <Card>
+              <Card className="shadow-sm bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
                 <CardContent className="pt-6">
-                  <div className="relative max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder={`Rechercher ${isProd ? "demande" : "offre"}...`}
-                      className="pl-10"
-                    />
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Input
+                        placeholder={`Trouvez ${isProd ? "des acheteurs" : "des produits"}...`}
+                        className="pl-10 bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-orange-700">
+                      <Flame className="w-4 h-4" />
+                      <span>Opportunités en direct</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
+
               {loading ? (
-                <div className="flex justify-center py-16">
-                  <Loader2 className="w-8 h-8 animate-spin" />
+                <div className="flex justify-center py-20">
+                  <OrganicSproutLoader text="Recherche des meilleures opportunités..." />
                 </div>
               ) : marketplaceItems.length === 0 ? (
-                <Card>
-                  <CardContent className="py-16 text-center">
-                    <p className="text-muted-foreground">
-                      Aucune opportunité disponible.
+                <Card className="shadow-sm">
+                  <CardContent className="py-20 text-center">
+                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-orange-100 flex items-center justify-center">
+                      <Store className="w-10 h-10 text-orange-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2">
+                      Aucune opportunité pour le moment
+                    </h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      Revenez bientôt pour découvrir de nouvelles{" "}
+                      {isProd ? "demandes d'achat" : "offres de produits"}
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
-                  <p className="text-sm text-muted-foreground">
-                    {paginationData.market.total} opportunité(s) disponible(s)
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-orange-600" />
+                      <span className="text-orange-600">
+                        {paginationData.market.total}
+                      </span>
+                      <span className="text-muted-foreground">
+                        opportunité(s) disponible(s)
+                      </span>
+                    </p>
+                  </div>
+
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {marketplaceItems.map((item) => (
                       <Card
                         key={item.id}
-                        className="hover:shadow-xl transition-all border-2 hover:border-primary/50"
+                        className="hover:shadow-xl transition-all border-2 hover:border-orange-400 group relative overflow-hidden"
                       >
-                        <CardContent className="p-6">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 opacity-10 rounded-bl-full"></div>
+                        <CardContent className="p-6 relative">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-bold text-lg shadow-md">
                               {isProd
                                 ? item.acheteur?.prenom?.[0]
                                 : item.producteur?.prenom?.[0]}
@@ -849,50 +1065,68 @@ export default function Dashboard() {
                                   ? `${item.acheteur?.prenom} ${item.acheteur?.nom}`
                                   : `${item.producteur?.prenom} ${item.producteur?.nom}`}
                               </p>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {isProd ? "Acheteur" : "Producteur"} certifié
+                              </p>
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                                 <MapPin className="w-3 h-3" />
                                 {item.region}
                               </div>
                             </div>
                           </div>
-                          <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-                            <Package className="w-5 h-5 text-primary" />
-                            {item.product?.nom || `Produit #${item.product_id}`}
-                          </h3>
-                          <div className="space-y-2 mb-4 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">
-                                Quantité
-                              </span>
-                              <span className="font-medium">
-                                {Number(item.quantite) +
-                                  " " +
-                                  item.product.unite}
-                              </span>
+
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Package className="w-5 h-5 text-orange-600" />
+                              <h3 className="font-bold text-lg">
+                                {item.product?.nom ||
+                                  `Produit #${item.product_id}`}
+                              </h3>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">
-                                {isProd ? "Budget" : "Prix"}
-                              </span>
-                              <span className="font-medium text-primary">
-                                {isProd ? item.budget_max : item.prix_unitaire}{" "}
-                                Ar
-                              </span>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div className="flex flex-col gap-1 p-2 rounded-lg bg-muted/50">
+                                <span className="text-muted-foreground text-xs">
+                                  Quantité
+                                </span>
+                                <span className="font-semibold flex items-center gap-1">
+                                  <Scale className="w-3 h-3" />
+                                  {Number(item.quantite)} {item.product?.unite}
+                                </span>
+                              </div>
+                              <div className="flex flex-col gap-1 p-2 rounded-lg bg-green-50">
+                                <span className="text-muted-foreground text-xs">
+                                  {isProd ? "Budget" : "Prix"}
+                                </span>
+                                <span className="font-bold text-green-600 flex items-center gap-1">
+                                  <Banknote className="w-3 h-3" />
+                                  {(isProd
+                                    ? item.budget_max
+                                    : item.prix_unitaire
+                                  ).toLocaleString()}{" "}
+                                  Ar
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <div className="pt-4 border-t flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+
+                          <div className="pt-4 border-t mt-4 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                               <Calendar className="w-3 h-3" />
                               {new Date(item.created_at).toLocaleDateString(
                                 "fr-FR",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                },
                               )}
                             </span>
                             <Button
                               size="sm"
-                              variant="outline"
                               onClick={() => handleViewDetails(item.id)}
+                              className="gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-sm"
                             >
-                              <Eye className="w-4 h-4 mr-2" />
+                              <Eye className="w-4 h-4" />
                               Détails
                             </Button>
                           </div>
@@ -900,6 +1134,7 @@ export default function Dashboard() {
                       </Card>
                     ))}
                   </div>
+
                   <StandardPagination
                     page={paginationData.market.page}
                     totalPages={paginationData.market.total_pages}
@@ -910,29 +1145,47 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* MATCHING */}
           {activeTab === "matching" && (
-            <Card>
+            <Card className="shadow-lg">
               <CardContent className="py-20 text-center">
-                <Search className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-xl font-semibold mb-2">
+                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
+                  <Target className="w-12 h-12 text-purple-600" />
+                </div>
+                <h3 className="text-2xl font-bold mb-3">
                   Matching Intelligent
                 </h3>
-                <p className="text-muted-foreground">
-                  Fonctionnalité à venir prochainement
+                <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                  Notre algorithme intelligent vous mettra automatiquement en
+                  relation avec les {isProd ? "acheteurs" : "producteurs"} les
+                  plus pertinents selon vos critères
                 </p>
+                <Badge variant="secondary" className="px-4 py-2">
+                  <Flame className="w-4 h-4 mr-2" />
+                  Disponible prochainement
+                </Badge>
               </CardContent>
             </Card>
           )}
+
+          {/* ROUTE */}
           {activeTab === "route" && (
-            <Card>
+            <Card className="shadow-lg">
               <CardContent className="py-20 text-center">
-                <Route className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-xl font-semibold mb-2">
-                  Itinéraire Optimal
+                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-100 to-green-100 flex items-center justify-center">
+                  <Route className="w-12 h-12 text-blue-600" />
+                </div>
+                <h3 className="text-2xl font-bold mb-3">
+                  Optimisation de tournée
                 </h3>
-                <p className="text-muted-foreground">
-                  Fonctionnalité à venir prochainement
+                <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                  Planifiez vos tournées de {isProd ? "livraison" : "collecte"}{" "}
+                  de manière optimale pour économiser du temps et du carburant
                 </p>
+                <Badge variant="secondary" className="px-4 py-2">
+                  <Flame className="w-4 h-4 mr-2" />
+                  Disponible prochainement
+                </Badge>
               </CardContent>
             </Card>
           )}
@@ -941,93 +1194,156 @@ export default function Dashboard() {
 
       {/* Dialog Détails */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl">
-              {selectedItem?.product?.nom || "Détails"}
+            <DialogTitle className="text-2xl flex items-center gap-2">
+              <Package className="w-6 h-6 text-primary" />
+              {selectedItem?.product?.nom || "Détails de l'annonce"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
               Publié le{" "}
               {selectedItem &&
-                new Date(selectedItem.created_at).toLocaleDateString("fr-FR")}
+                new Date(selectedItem.created_at).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
             </DialogDescription>
           </DialogHeader>
-          {selectedItem && (
+
+          {selectedItem && displayUser && (
             <div className="space-y-6">
-              <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-                <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xl">
-                  {isProd
-                    ? selectedItem.acheteur?.prenom?.[0]
-                    : selectedItem.producteur?.prenom?.[0]}
+              {/* Profil du contact */}
+              <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/20">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                  {displayUser.prenom?.[0]}
+                  {displayUser.nom?.[0]}
                 </div>
-                <div>
-                  <p className="font-semibold text-lg">
-                    {isProd
-                      ? `${selectedItem.acheteur?.prenom} ${selectedItem.acheteur?.nom}`
-                      : `${selectedItem.producteur?.prenom} ${selectedItem.producteur?.nom}`}
+                <div className="flex-1">
+                  <p className="font-bold text-lg">
+                    {displayUser.prenom} {displayUser.nom}
                   </p>
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {isProd ? "Acheteur" : "Producteur"}
+                  <p className="text-sm text-muted-foreground capitalize flex items-center gap-1.5">
+                    <Users className="w-4 h-4" />
+                    {activeTab === "marketplace"
+                      ? isProd
+                        ? "Acheteur"
+                        : "Producteur"
+                      : isProd
+                        ? "Producteur"
+                        : "Acheteur"}{" "}
+                    certifié
                   </p>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
                     <MapPin className="w-4 h-4" />
                     {selectedItem.region}
                   </div>
                 </div>
+                <div className="flex flex-col gap-2">
+                  <Badge variant="secondary" className="justify-center">
+                    Membre vérifié
+                  </Badge>
+                </div>
               </div>
+
+              {/* Informations détaillées */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 border rounded-lg flex items-center gap-3">
-                  <Package className="w-5 h-5 text-primary" />
-                  <div>
+                <div className="p-4 border rounded-lg hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Package className="w-5 h-5 text-primary" />
+                    </div>
                     <p className="text-sm text-muted-foreground">Produit</p>
-                    <p className="font-semibold">
-                      {selectedItem.product?.nom || "Non spécifié"}
-                    </p>
                   </div>
-                </div>
-                <div className="p-4 border rounded-lg flex items-center gap-3">
-                  <Scale className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Quantité</p>
-                    <p className="font-semibold">
-                      {selectedItem.quantite + " " + selectedItem.product.unite}
+                  <p className="font-bold text-lg">
+                    {selectedItem.product?.nom || "Non spécifié"}
+                  </p>
+                  {selectedItem.product?.categorie && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {selectedItem.product.categorie}
                     </p>
-                  </div>
+                  )}
                 </div>
-                <div className="p-4 border rounded-lg flex items-center gap-3">
-                  <Banknote className="w-5 h-5 text-primary" />
-                  <div>
+
+                <div className="p-4 border rounded-lg hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <Scale className="w-5 h-5 text-blue-600" />
+                    </div>
                     <p className="text-sm text-muted-foreground">
-                      {isProd ? "Budget max" : "Prix unitaire"}
-                    </p>
-                    <p className="font-semibold text-primary">
-                      {isProd
-                        ? selectedItem.budget_max
-                        : selectedItem.prix_unitaire}{" "}
-                      Ar
+                      Quantité disponible
                     </p>
                   </div>
+                  <p className="font-bold text-lg">
+                    {selectedItem.quantite} {selectedItem.product?.unite}
+                  </p>
                 </div>
-                <div className="p-4 border rounded-lg flex items-center gap-3">
-                  <MapPin className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Région</p>
-                    <p className="font-semibold">{selectedItem.region}</p>
+
+                <div className="p-4 border rounded-lg hover:border-green-200 transition-colors bg-gradient-to-br from-green-50 to-green-100/20">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-green-200 flex items-center justify-center">
+                      <Banknote className="w-5 h-5 text-green-700" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {activeTab === "marketplace"
+                        ? isProd
+                          ? "Budget maximum"
+                          : "Prix unitaire"
+                        : isProd
+                          ? "Prix unitaire"
+                          : "Budget maximum"}
+                    </p>
                   </div>
+                  <p className="font-bold text-2xl text-green-600">
+                    {activeTab === "marketplace"
+                      ? isProd
+                        ? selectedItem.budget_max
+                        : selectedItem.prix_unitaire
+                      : isProd
+                        ? selectedItem.prix_unitaire
+                        : selectedItem.budget_max}{" "}
+                    <span className="text-base">Ar</span>
+                  </p>
+                </div>
+
+                <div className="p-4 border rounded-lg hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                      <MapPin className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Localisation
+                    </p>
+                  </div>
+                  <p className="font-bold text-lg">{selectedItem.region}</p>
                 </div>
               </div>
+
+              {/* Notes additionnelles */}
               {selectedItem.notes && (
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-2">Notes</p>
-                  <p>{selectedItem.notes}</p>
+                <div className="p-4 bg-muted/50 rounded-lg border">
+                  <p className="text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-primary" />
+                    Informations complémentaires
+                  </p>
+                  <p className="text-sm leading-relaxed">
+                    {selectedItem.notes}
+                  </p>
                 </div>
               )}
-              <div className="flex gap-3">
-                <Button className="flex-1">
-                  <ShoppingBag className="w-4 h-4 mr-2" />
-                  Contacter
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button className="flex-1 gap-2 shadow-md" size="lg">
+                  <Mail className="w-4 h-4" />
+                  Envoyer un message
                 </Button>
-                <Button variant="outline" onClick={() => setDetailsOpen(false)}>
+                <Button variant="outline" className="flex-1 gap-2" size="lg">
+                  <Phone className="w-4 h-4" />
+                  Appeler
+                </Button>
+                <Button variant="ghost" onClick={() => setDetailsOpen(false)}>
                   Fermer
                 </Button>
               </div>
