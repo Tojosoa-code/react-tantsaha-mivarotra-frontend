@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +38,6 @@ import {
   Eye,
   Pencil,
   Trash2,
-  Loader2,
   Package,
   Scale,
   Banknote,
@@ -61,42 +60,20 @@ export default function Dashboard() {
     "home" | "my-primary" | "all-primary" | "marketplace" | "matching" | "route"
   >("home");
 
-  // Données
   const [myItems, setMyItems] = useState<any[]>([]);
   const [primaryItems, setPrimaryItems] = useState<any[]>([]);
   const [marketplaceItems, setMarketplaceItems] = useState<any[]>([]);
 
-  // Pagination classique (1, 2, 3...)
   const [paginationData, setPaginationData] = useState({
+    my: { total: 0, page: 1, total_pages: 0 },
     primary: { total: 0, page: 1, total_pages: 0 },
     market: { total: 0, page: 1, total_pages: 0 },
   });
 
-  // Pagination infinie (Mes items)
-  const [myPages, setMyPages] = useState(1);
-  const [hasMoreMy, setHasMoreMy] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [loadingMoreMy, setLoadingMoreMy] = useState(false);
-
   const [dropdowns, setDropdowns] = useState({ primary: false, market: false });
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-
-  // Ref pour intersection observer (pagination infinie)
-  const observer = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (loadingMoreMy || !hasMoreMy) return;
-      if (observer.current) observer.current.disconnect();
-      observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && hasMoreMy && !loadingMoreMy) {
-          loadMyItems(user, myPages + 1, true);
-        }
-      });
-      if (node) observer.current.observe(node);
-    },
-    [loadingMoreMy, hasMoreMy, myPages, user],
-  );
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -108,7 +85,6 @@ export default function Dashboard() {
     setUser(JSON.parse(storedUser));
   }, [navigate]);
 
-  // Config dynamique
   const isProd = user?.role === "producteur";
   const primaryLabel = isProd ? "Offres" : "Demandes";
   const marketLabel = isProd ? "Demandes" : "Offres";
@@ -118,28 +94,30 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    if (activeTab === "my-primary") loadMyItems(user, 1);
+    if (activeTab === "my-primary") loadMyItems(1);
     if (activeTab === "all-primary") loadPrimaryItems(1);
     if (activeTab === "marketplace") loadMarketplaceItems(1);
   }, [activeTab, user]);
 
-  // --- CHARGEMENTS ---
-  const loadMyItems = async (currentUser: any, page = 1, append = false) => {
-    if (!currentUser) return;
-    if (page === 1) setLoading(true);
-    else setLoadingMoreMy(true);
+  // ✅ Mes items avec pagination classique
+  const loadMyItems = async (page = 1) => {
+    if (!user) return;
+    setLoading(true);
     try {
       const res = await api.get(`${myEndpoint}?page=${page}&page_size=12`);
-      const data = Array.isArray(res.data) ? res.data : res.data.items || [];
-      if (append) setMyItems((prev) => [...prev, ...data]);
-      else setMyItems(data);
-      setHasMoreMy(data.length === 12);
-      setMyPages(page);
+      const items = res.data.items || res.data || [];
+      const total = res.data.total ?? items.length;
+      const total_pages = (res.data.total_pages ?? Math.ceil(total / 12)) || 1;
+
+      setMyItems(items);
+      setPaginationData((prev) => ({
+        ...prev,
+        my: { total, page, total_pages },
+      }));
     } catch {
       toast.error("Erreur de chargement");
     } finally {
       setLoading(false);
-      setLoadingMoreMy(false);
     }
   };
 
@@ -147,7 +125,6 @@ export default function Dashboard() {
     if (!user) return;
     setLoading(true);
     try {
-      // ✅ CORRECTION : Utilise exclude_current_user=true
       const res = await api.get(
         `${primaryEndpoint}?page=${page}&page_size=12&exclude_current_user=true`,
       );
@@ -189,7 +166,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- ACTIONS ---
   const handleEdit = (item: any) => {
     navigate(isProd ? `/edit-offer/${item.id}` : `/edit-demand/${item.id}`);
   };
@@ -200,7 +176,7 @@ export default function Dashboard() {
     try {
       await api.delete(`${isProd ? "/offers" : "/demands"}/${itemId}`);
       toast.success("Élément supprimé avec succès");
-      loadMyItems(user, 1);
+      loadMyItems(1);
     } catch {
       toast.error("Erreur lors de la suppression");
     }
@@ -231,7 +207,6 @@ export default function Dashboard() {
       </div>
     );
 
-  // --- COMPOSANT PAGINATION CLASSIQUE ---
   const StandardPagination = ({
     page,
     totalPages,
@@ -292,15 +267,11 @@ export default function Dashboard() {
     );
   };
 
-  // ✅ CORRECTION : Fonction pour déterminer quel utilisateur afficher dans le modal
   const getDisplayUser = () => {
     if (!selectedItem) return null;
-
     if (activeTab === "marketplace") {
-      // Marketplace : producteur voit acheteurs, acheteur voit producteurs
       return isProd ? selectedItem.acheteur : selectedItem.producteur;
     } else {
-      // All-primary : producteur voit producteurs, acheteur voit acheteurs
       return isProd ? selectedItem.producteur : selectedItem.acheteur;
     }
   };
@@ -360,7 +331,7 @@ export default function Dashboard() {
               <div className="pl-4 py-1 space-y-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "my-primary" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3 text-sm"
+                  className="w-full justify-start gap-3"
                   onClick={() => setActiveTab("my-primary")}
                 >
                   <Package className="w-4 h-4" />
@@ -368,7 +339,7 @@ export default function Dashboard() {
                 </Button>
                 <Button
                   variant={activeTab === "all-primary" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3 text-sm"
+                  className="w-full justify-start gap-3"
                   onClick={() => setActiveTab("all-primary")}
                 >
                   <TrendingUp className="w-4 h-4" />
@@ -397,7 +368,7 @@ export default function Dashboard() {
               <div className="pl-4 py-1 space-y-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "marketplace" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3 text-sm"
+                  className="w-full justify-start gap-3"
                   onClick={() => setActiveTab("marketplace")}
                 >
                   <Flame className="w-4 h-4" />
@@ -430,7 +401,7 @@ export default function Dashboard() {
         <div className="p-4 border-t mt-auto bg-muted/30">
           <div className="bg-card rounded-lg p-3 mb-3 shadow-sm border">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-bold shadow">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-light shadow">
                 {user.prenom?.[0]}
                 {user.nom?.[0]}
               </div>
@@ -634,7 +605,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TABLEAU MES ITEMS (Pagination Infinie) */}
+          {/* TABLEAU MES ITEMS (Pagination) */}
           {activeTab === "my-primary" && (
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30">
@@ -644,7 +615,7 @@ export default function Dashboard() {
                     Mes {primaryLabel}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {myItems.length}{" "}
+                    {paginationData.my.total}{" "}
                     {isProd
                       ? "produit(s) disponible(s)"
                       : "demande(s) active(s)"}
@@ -810,38 +781,20 @@ export default function Dashboard() {
                         </TableBody>
                       </Table>
                     </div>
-                    {hasMoreMy && (
-                      <div
-                        ref={loadMoreRef}
-                        className="flex justify-center py-6 border-t mt-6"
-                      >
-                        <Button
-                          variant="outline"
-                          onClick={() => loadMyItems(user, myPages + 1, true)}
-                          disabled={loadingMoreMy}
-                          className="gap-2"
-                        >
-                          {loadingMoreMy ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Chargement...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="w-4 h-4" />
-                              Charger plus de résultats
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
+
+                    {/* ✅ Pagination classique */}
+                    <StandardPagination
+                      page={paginationData.my.page}
+                      totalPages={paginationData.my.total_pages}
+                      onChange={(p) => loadMyItems(p)}
+                    />
                   </>
                 )}
               </CardContent>
             </Card>
           )}
 
-          {/* TOUTES LES ... (Pagination 1,2,3) */}
+          {/* TOUTES LES ... (Pagination) */}
           {activeTab === "all-primary" && (
             <div className="space-y-6">
               <Card className="shadow-sm">
@@ -902,7 +855,7 @@ export default function Dashboard() {
                       >
                         <CardContent className="p-6">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-light text-lg">
                               {isProd
                                 ? item.producteur?.prenom?.[0]
                                 : item.acheteur?.prenom?.[0]}
@@ -1054,7 +1007,7 @@ export default function Dashboard() {
                         <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 opacity-10 rounded-bl-full"></div>
                         <CardContent className="p-6 relative">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-bold text-lg shadow-md">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-light text-lg shadow-md">
                               {isProd
                                 ? item.acheteur?.prenom?.[0]
                                 : item.producteur?.prenom?.[0]}
@@ -1216,7 +1169,7 @@ export default function Dashboard() {
             <div className="space-y-6">
               {/* Profil du contact */}
               <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/20">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                <div className="w-15 h-15 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-light text-2xl shadow-lg">
                   {displayUser.prenom?.[0]}
                   {displayUser.nom?.[0]}
                 </div>
