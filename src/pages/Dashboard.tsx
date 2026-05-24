@@ -1,9 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import CrudDialog from "@/components/CrudDialog";
+import SuggestionsTab from "@/components/SuggestionsTab";
+import NotificationBell from "@/components/NotificationBell";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +29,6 @@ import {
   PlusCircle,
   Search,
   Route,
-  UserCircle,
   LogOut,
   ShoppingBag,
   Truck,
@@ -49,6 +51,11 @@ import {
   Handshake,
   Mail,
   Phone,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Star,
+  X,
 } from "lucide-react";
 import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
@@ -75,6 +82,30 @@ export default function Dashboard() {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // CRUD
+  const [crudOpen, setCrudOpen] = useState(false);
+  const [crudMode, setCrudMode] = useState<"create" | "edit">("create");
+  const [crudItem, setCrudItem] = useState<any>(null);
+
+  // Suggestions par item
+  const [itemSuggestionsOpen, setItemSuggestionsOpen] = useState(false);
+  const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
+  const [itemSuggestionsLoading, setItemSuggestionsLoading] = useState(false);
+  const [focusedItem, setFocusedItem] = useState<any>(null);
+
+  // Recherche
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Stats
+  const [statsData, setStatsData] = useState({
+    total_matches: 0,
+    contacts_etablis: 0,
+    negociations: 0,
+  });
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
@@ -87,19 +118,34 @@ export default function Dashboard() {
 
   const isProd = user?.role === "producteur";
   const primaryLabel = isProd ? "Offres" : "Demandes";
-  const marketLabel = isProd ? "Demandes" : "Offres";
   const primaryEndpoint = isProd ? "/offers" : "/demands";
   const myEndpoint = isProd ? "/users/me/offers" : "/users/me/demands";
   const marketEndpoint = isProd ? "/demands" : "/offers";
 
   useEffect(() => {
     if (!user) return;
+    loadStats();
     if (activeTab === "my-primary") loadMyItems(1);
     if (activeTab === "all-primary") loadPrimaryItems(1);
     if (activeTab === "marketplace") loadMarketplaceItems(1);
   }, [activeTab, user]);
 
-  // ✅ Mes items avec pagination classique
+  const loadStats = async () => {
+    try {
+      const res = await api.get("/matches/suggestions?limit=50");
+      const suggestions = res.data.suggestions ?? [];
+      setStatsData({
+        total_matches: res.data.count ?? 0,
+        contacts_etablis: suggestions.filter((s: any) =>
+          ["interested", "negotiating", "done"].includes(s.match_statut),
+        ).length,
+        negociations: suggestions.filter(
+          (s: any) => s.match_statut === "negotiating",
+        ).length,
+      });
+    } catch {}
+  };
+
   const loadMyItems = async (page = 1) => {
     if (!user) return;
     setLoading(true);
@@ -108,7 +154,6 @@ export default function Dashboard() {
       const items = res.data.items || res.data || [];
       const total = res.data.total ?? items.length;
       const total_pages = (res.data.total_pages ?? Math.ceil(total / 12)) || 1;
-
       setMyItems(items);
       setPaginationData((prev) => ({
         ...prev,
@@ -128,15 +173,15 @@ export default function Dashboard() {
       const res = await api.get(
         `${primaryEndpoint}?page=${page}&page_size=12&exclude_current_user=true`,
       );
-
       const items = res.data.items || [];
-      const total = res.data.total ?? 0;
-      const total_pages = res.data.total_pages ?? 1;
-
       setPrimaryItems(items);
       setPaginationData((prev) => ({
         ...prev,
-        primary: { total, page, total_pages },
+        primary: {
+          total: res.data.total ?? 0,
+          page,
+          total_pages: res.data.total_pages ?? 1,
+        },
       }));
     } catch {
       toast.error("Erreur de chargement");
@@ -151,13 +196,14 @@ export default function Dashboard() {
     try {
       const res = await api.get(`${marketEndpoint}?page=${page}&page_size=12`);
       const items = res.data.items || [];
-      const total = res.data.total ?? 0;
-      const total_pages = res.data.total_pages ?? 1;
-
       setMarketplaceItems(items);
       setPaginationData((prev) => ({
         ...prev,
-        market: { total, page, total_pages },
+        market: {
+          total: res.data.total ?? 0,
+          page,
+          total_pages: res.data.total_pages ?? 1,
+        },
       }));
     } catch {
       toast.error("Erreur de chargement");
@@ -166,8 +212,17 @@ export default function Dashboard() {
     }
   };
 
+  // CRUD handlers
+  const handleCreate = () => {
+    setCrudItem(null);
+    setCrudMode("create");
+    setCrudOpen(true);
+  };
+
   const handleEdit = (item: any) => {
-    navigate(isProd ? `/edit-offer/${item.id}` : `/edit-demand/${item.id}`);
+    setCrudItem(item);
+    setCrudMode("edit");
+    setCrudOpen(true);
   };
 
   const handleDelete = async (itemId: number) => {
@@ -200,12 +255,153 @@ export default function Dashboard() {
     navigate("/login");
   };
 
-  if (!user)
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <OrganicSproutLoader text="Préparation de votre espace..." />
-      </div>
+  // Deadline helpers
+  const isExpired = (item: any): boolean => {
+    const deadline = isProd ? item.date_dispo_fin : item.date_souhaitee;
+    if (!deadline) return false;
+    return new Date(deadline) < new Date();
+  };
+
+  const DeadlineBadge = ({ item }: { item: any }) => {
+    const deadline = isProd ? item.date_dispo_fin : item.date_souhaitee;
+    if (!deadline)
+      return <span className="text-xs text-muted-foreground">—</span>;
+    const diff = Math.ceil(
+      (new Date(deadline).getTime() - Date.now()) / 86400000,
     );
+    if (diff < 0)
+      return (
+        <Badge variant="destructive" className="text-xs gap-1">
+          <X className="w-2.5 h-2.5" />
+          Expiré
+        </Badge>
+      );
+    if (diff <= 3)
+      return (
+        <Badge className="text-xs gap-1 bg-red-100 text-red-700 border-red-200">
+          <AlertCircle className="w-2.5 h-2.5" />
+          {diff}j
+        </Badge>
+      );
+    if (diff <= 7)
+      return (
+        <Badge className="text-xs gap-1 bg-amber-100 text-amber-700 border-amber-200">
+          <Clock className="w-2.5 h-2.5" />
+          {diff}j
+        </Badge>
+      );
+    return (
+      <Badge variant="secondary" className="text-xs gap-1">
+        <CheckCircle2 className="w-2.5 h-2.5 text-green-600" />
+        {new Date(deadline).toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "short",
+        })}
+      </Badge>
+    );
+  };
+
+  // Suggestions par item
+  const handleRowClick = async (item: any) => {
+    if (isExpired(item)) return;
+    setFocusedItem(item);
+    setItemSuggestionsOpen(true);
+    setItemSuggestionsLoading(true);
+    try {
+      const res = await api.get("/matches/suggestions?limit=20");
+      const all = res.data.suggestions ?? [];
+      setItemSuggestions(
+        all.filter((s: any) => s.product_name === item.product?.nom),
+      );
+    } catch {
+      toast.error("Impossible de charger les suggestions");
+    } finally {
+      setItemSuggestionsLoading(false);
+    }
+  };
+
+  // Recherche Trie
+  const handleSearch = useCallback(async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchSuggestions([]);
+      setSearchOpen(false);
+      return;
+    }
+    try {
+      const res = await api.get(
+        `/matches/search?prefix=${encodeURIComponent(q)}`,
+      );
+      setSearchSuggestions((res.data ?? []).map((p: any) => p.nom));
+      setSearchOpen(true);
+    } catch {}
+  }, []);
+
+  const filterBySearch = (items: any[]) => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.toLowerCase();
+    return items.filter(
+      (item) =>
+        item.product?.nom?.toLowerCase().includes(q) ||
+        item.product?.categorie?.toLowerCase().includes(q) ||
+        item.region?.toLowerCase().includes(q),
+    );
+  };
+
+  const getDisplayUser = () => {
+    if (!selectedItem) return null;
+    if (activeTab === "marketplace") {
+      return isProd ? selectedItem.acheteur : selectedItem.producteur;
+    }
+    return isProd ? selectedItem.producteur : selectedItem.acheteur;
+  };
+
+  const displayUser = getDisplayUser();
+
+  // Barre de recherche avec Trie
+  const SearchBarWithTrie = ({ placeholder }: { placeholder: string }) => (
+    <div className="relative flex-1 max-w-md" ref={searchRef}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+      <Input
+        value={searchQuery}
+        onChange={(e) => handleSearch(e.target.value)}
+        onFocus={() => searchSuggestions.length > 0 && setSearchOpen(true)}
+        placeholder={placeholder}
+        className="pl-10 pr-9"
+      />
+      {searchQuery && (
+        <button
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            setSearchQuery("");
+            setSearchSuggestions([]);
+            setSearchOpen(false);
+          }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {searchOpen && searchSuggestions.length > 0 && (
+        <div className="absolute z-50 top-full mt-1 w-full bg-card border rounded-lg shadow-lg overflow-hidden">
+          <ul className="max-h-40 overflow-y-auto divide-y">
+            {searchSuggestions.map((s) => (
+              <li
+                key={s}
+                onClick={() => {
+                  setSearchQuery(s);
+                  setSearchOpen(false);
+                }}
+                className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/50 text-sm"
+              >
+                <Search className="w-3.5 h-3.5 text-muted-foreground" />
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 
   const StandardPagination = ({
     page,
@@ -267,20 +463,16 @@ export default function Dashboard() {
     );
   };
 
-  const getDisplayUser = () => {
-    if (!selectedItem) return null;
-    if (activeTab === "marketplace") {
-      return isProd ? selectedItem.acheteur : selectedItem.producteur;
-    } else {
-      return isProd ? selectedItem.producteur : selectedItem.acheteur;
-    }
-  };
-
-  const displayUser = getDisplayUser();
+  if (!user)
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <OrganicSproutLoader text="Préparation de votre espace..." />
+      </div>
+    );
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-background to-muted/20">
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <div className="w-72 border-r bg-card/95 backdrop-blur-sm flex flex-col shadow-lg">
         <div className="p-6 border-b flex items-center gap-3 bg-gradient-to-r from-primary/10 to-primary/5">
           <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center text-primary-foreground shadow-md">
@@ -301,10 +493,9 @@ export default function Dashboard() {
             onClick={() => setActiveTab("home")}
           >
             <Home className="w-5 h-5" />
-            <span>Tableau de bord</span>
+            Tableau de bord
           </Button>
 
-          {/* MENU PRIMAIRE */}
           <div
             onMouseEnter={() => setDropdowns((p) => ({ ...p, primary: true }))}
             onMouseLeave={() => setDropdowns((p) => ({ ...p, primary: false }))}
@@ -349,7 +540,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* MENU MARKETPLACE */}
           <div
             onMouseEnter={() => setDropdowns((p) => ({ ...p, market: true }))}
             onMouseLeave={() => setDropdowns((p) => ({ ...p, market: false }))}
@@ -427,8 +617,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Contenu Principal */}
+      {/* ── Contenu Principal ── */}
       <div className="flex-1 overflow-auto">
+        {/* Header */}
         <header className="h-16 border-b bg-card/95 backdrop-blur-sm px-8 flex items-center justify-between sticky top-0 z-10 shadow-sm">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
             {activeTab === "home" && "Tableau de bord"}
@@ -439,25 +630,28 @@ export default function Dashboard() {
             {activeTab === "matching" && "Matching Intelligent"}
             {activeTab === "route" && "Optimisation de tournée"}
           </h1>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2 hover:bg-primary/10"
-            onClick={() => {
-              if (activeTab === "my-primary") loadMyItems(user, 1);
-              if (activeTab === "all-primary")
-                loadPrimaryItems(paginationData.primary.page);
-              if (activeTab === "marketplace")
-                loadMarketplaceItems(paginationData.market.page);
-            }}
-          >
-            <RefreshCw className="w-4 h-4" />
-            Actualiser
-          </Button>
+          <div className="flex items-center gap-2">
+            <NotificationBell onMatchClick={() => setActiveTab("matching")} />
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 hover:bg-primary/10"
+              onClick={() => {
+                if (activeTab === "my-primary") loadMyItems(1);
+                if (activeTab === "all-primary")
+                  loadPrimaryItems(paginationData.primary.page);
+                if (activeTab === "marketplace")
+                  loadMarketplaceItems(paginationData.market.page);
+              }}
+            >
+              <RefreshCw className="w-4 h-4" />
+              Actualiser
+            </Button>
+          </div>
         </header>
 
         <main className="p-8">
-          {/* ACCUEIL */}
+          {/* ── HOME ── */}
           {activeTab === "home" && (
             <div className="max-w-6xl mx-auto">
               <div className="text-center py-12 mb-12 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl p-8">
@@ -539,7 +733,7 @@ export default function Dashboard() {
                 </Card>
               </div>
 
-              {/* Stats supplémentaires */}
+              {/* Stats réelles */}
               <div className="grid md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
@@ -560,12 +754,14 @@ export default function Dashboard() {
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Eye className="w-5 h-5 text-blue-600" />
+                        <Star className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">-</p>
+                        <p className="text-2xl font-bold">
+                          {statsData.total_matches}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          Vues cette semaine
+                          Correspondances trouvées
                         </p>
                       </div>
                     </div>
@@ -578,7 +774,9 @@ export default function Dashboard() {
                         <Users className="w-5 h-5 text-purple-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">-</p>
+                        <p className="text-2xl font-bold">
+                          {statsData.contacts_etablis}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           Contacts établis
                         </p>
@@ -593,9 +791,11 @@ export default function Dashboard() {
                         <Handshake className="w-5 h-5 text-orange-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">-</p>
+                        <p className="text-2xl font-bold">
+                          {statsData.negociations}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          Transactions
+                          Négociations en cours
                         </p>
                       </div>
                     </div>
@@ -605,7 +805,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TABLEAU MES ITEMS (Pagination) */}
+          {/* ── MES ITEMS ── */}
           {activeTab === "my-primary" && (
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30">
@@ -621,12 +821,7 @@ export default function Dashboard() {
                       : "demande(s) active(s)"}
                   </p>
                 </div>
-                <Button
-                  onClick={() =>
-                    navigate(isProd ? "/new-offer" : "/new-demand")
-                  }
-                  className="gap-2 shadow-sm"
-                >
+                <Button onClick={handleCreate} className="gap-2 shadow-sm">
                   <PlusCircle className="w-4 h-4" />
                   {isProd ? "Nouvelle offre" : "Nouvelle demande"}
                 </Button>
@@ -651,13 +846,7 @@ export default function Dashboard() {
                         ? "Présentez vos produits à des milliers d'acheteurs potentiels en quelques clics"
                         : "Trouvez les meilleurs producteurs locaux pour vos besoins"}
                     </p>
-                    <Button
-                      size="lg"
-                      onClick={() =>
-                        navigate(isProd ? "/new-offer" : "/new-demand")
-                      }
-                      className="gap-2"
-                    >
+                    <Button size="lg" onClick={handleCreate} className="gap-2">
                       <PlusCircle className="w-5 h-5" />
                       {isProd
                         ? "Créer ma première offre"
@@ -677,13 +866,16 @@ export default function Dashboard() {
                               Quantité
                             </TableHead>
                             <TableHead className="font-semibold">
-                              {isProd ? "Prix unitaire" : "Budget maximum"}
+                              {isProd ? "Prix unitaire" : "Budget max"}
                             </TableHead>
                             <TableHead className="font-semibold">
                               Localisation
                             </TableHead>
                             <TableHead className="font-semibold">
-                              Date de publication
+                              Deadline
+                            </TableHead>
+                            <TableHead className="font-semibold">
+                              Suggestions
                             </TableHead>
                             <TableHead className="text-right font-semibold">
                               Actions
@@ -691,98 +883,119 @@ export default function Dashboard() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {myItems.map((item) => (
-                            <TableRow
-                              key={item.id}
-                              className="hover:bg-muted/30 transition-colors"
-                            >
-                              <TableCell>
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-                                    <Package className="w-5 h-5 text-primary" />
-                                  </div>
-                                  <div>
-                                    <p className="font-medium">
-                                      {item.product?.nom ||
-                                        `Produit #${item.product_id}`}
-                                    </p>
-                                    {item.product?.categorie && (
-                                      <p className="text-xs text-muted-foreground">
-                                        {item.product.categorie}
-                                      </p>
+                          {[...myItems]
+                            .sort(
+                              (a, b) =>
+                                Number(isExpired(a)) - Number(isExpired(b)),
+                            )
+                            .map((item) => {
+                              const expired = isExpired(item);
+                              return (
+                                <TableRow
+                                  key={item.id}
+                                  onClick={() => handleRowClick(item)}
+                                  className={`transition-colors ${
+                                    expired
+                                      ? "opacity-50 bg-muted/30 cursor-default"
+                                      : "hover:bg-primary/5 cursor-pointer"
+                                  }`}
+                                >
+                                  <TableCell>
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className={`w-9 h-9 rounded-lg flex items-center justify-center ${expired ? "bg-muted" : "bg-primary/10"}`}
+                                      >
+                                        <Package
+                                          className={`w-4 h-4 ${expired ? "text-muted-foreground" : "text-primary"}`}
+                                        />
+                                      </div>
+                                      <div>
+                                        <p
+                                          className={`font-medium text-sm ${expired ? "line-through text-muted-foreground" : ""}`}
+                                        >
+                                          {item.product?.nom ||
+                                            `Produit #${item.product_id}`}
+                                        </p>
+                                        {item.product?.categorie && (
+                                          <p className="text-xs text-muted-foreground">
+                                            {item.product.categorie}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="text-sm font-medium">
+                                      {Number(item.quantite)}{" "}
+                                      {item.product?.unite || "kg"}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span
+                                      className={`text-sm font-semibold ${expired ? "text-muted-foreground" : "text-green-600"}`}
+                                    >
+                                      {(isProd
+                                        ? item.prix_unitaire
+                                        : item.budget_max
+                                      )?.toLocaleString()}{" "}
+                                      Ar
+                                    </span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant="secondary"
+                                      className="gap-1 text-xs"
+                                    >
+                                      <MapPin className="w-3 h-3" />
+                                      {item.region}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <DeadlineBadge item={item} />
+                                  </TableCell>
+                                  <TableCell>
+                                    {expired ? (
+                                      <span className="text-xs text-muted-foreground">
+                                        —
+                                      </span>
+                                    ) : (
+                                      <Badge className="gap-1 text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 cursor-pointer">
+                                        <Star className="w-2.5 h-2.5" />
+                                        Voir
+                                      </Badge>
                                     )}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Scale className="w-4 h-4 text-muted-foreground" />
-                                  <span className="font-medium">
-                                    {Number(item.quantite)}{" "}
-                                    {item.product?.unite || "kg"}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Banknote className="w-4 h-4 text-green-600" />
-                                  <span className="font-semibold text-green-600">
-                                    {(isProd
-                                      ? item.prix_unitaire
-                                      : item.budget_max
-                                    ).toLocaleString()}{" "}
-                                    Ar
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary" className="gap-1.5">
-                                  <MapPin className="w-3 h-3" />
-                                  {item.region}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                                  <Calendar className="w-4 h-4" />
-                                  {new Date(item.created_at).toLocaleDateString(
-                                    "fr-FR",
-                                    {
-                                      day: "numeric",
-                                      month: "short",
-                                      year: "numeric",
-                                    },
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex justify-end gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => handleEdit(item)}
-                                    title="Modifier"
-                                    className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300"
+                                  </TableCell>
+                                  <TableCell
+                                    className="text-right"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => handleDelete(item.id)}
-                                    title="Supprimer"
-                                    className="hover:bg-red-50 hover:text-red-600 hover:border-red-300"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                    <div className="flex justify-end gap-1.5">
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={() => handleEdit(item)}
+                                        className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={() => handleDelete(item.id)}
+                                        className="h-8 w-8 hover:bg-red-50 hover:text-red-600 hover:border-red-300"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
                         </TableBody>
                       </Table>
                     </div>
-
-                    {/* ✅ Pagination classique */}
                     <StandardPagination
                       page={paginationData.my.page}
                       totalPages={paginationData.my.total_pages}
@@ -794,19 +1007,15 @@ export default function Dashboard() {
             </Card>
           )}
 
-          {/* TOUTES LES ... (Pagination) */}
+          {/* ── ANALYSE MARCHÉ ── */}
           {activeTab === "all-primary" && (
             <div className="space-y-6">
               <Card className="shadow-sm">
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-4">
-                    <div className="relative flex-1 max-w-md">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                      <Input
-                        placeholder={`Rechercher parmi les ${primaryLabel.toLowerCase()}...`}
-                        className="pl-10"
-                      />
-                    </div>
+                    <SearchBarWithTrie
+                      placeholder={`Rechercher parmi les ${primaryLabel.toLowerCase()}...`}
+                    />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <TrendingUp className="w-4 h-4" />
                       <span>Analyse de la concurrence</span>
@@ -822,17 +1031,10 @@ export default function Dashboard() {
               ) : primaryItems.length === 0 ? (
                 <Card className="shadow-sm">
                   <CardContent className="py-20 text-center">
-                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
-                      <Eye className="w-10 h-10 text-muted-foreground" />
-                    </div>
+                    <Eye className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
-                      Aucune donnée disponible pour le moment
+                      Aucune donnée disponible
                     </h3>
-                    <p className="text-muted-foreground max-w-md mx-auto">
-                      Les {primaryLabel.toLowerCase()} de vos concurrents
-                      n'apparaissent pas ici pour vous permettre une analyse
-                      objective du marché
-                    </p>
                   </CardContent>
                 </Card>
               ) : (
@@ -841,14 +1043,13 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground flex items-center gap-2">
                       <Package className="w-4 h-4" />
                       <span className="font-medium">
-                        {primaryItems.length}
+                        {filterBySearch(primaryItems).length}
                       </span>{" "}
                       {primaryLabel.toLowerCase()} disponible(s)
                     </p>
                   </div>
-
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {primaryItems.map((item) => (
+                    {filterBySearch(primaryItems).map((item) => (
                       <Card
                         key={item.id}
                         className="hover:shadow-xl transition-all border-2 hover:border-primary/50 group"
@@ -872,7 +1073,6 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
-
                           <div className="space-y-3">
                             <div className="flex items-center gap-2">
                               <Package className="w-5 h-5 text-primary" />
@@ -881,7 +1081,6 @@ export default function Dashboard() {
                                   `Produit #${item.product_id}`}
                               </h3>
                             </div>
-
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div className="flex flex-col gap-1">
                                 <span className="text-muted-foreground text-xs">
@@ -901,13 +1100,12 @@ export default function Dashboard() {
                                   {(isProd
                                     ? item.prix_unitaire
                                     : item.budget_max
-                                  ).toLocaleString()}{" "}
+                                  )?.toLocaleString()}{" "}
                                   Ar
                                 </span>
                               </div>
                             </div>
                           </div>
-
                           <div className="pt-4 border-t mt-4 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                               <Calendar className="w-3 h-3" />
@@ -933,7 +1131,6 @@ export default function Dashboard() {
                       </Card>
                     ))}
                   </div>
-
                   <StandardPagination
                     page={paginationData.primary.page}
                     totalPages={paginationData.primary.total_pages}
@@ -944,22 +1141,18 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* MARKETPLACE (Pagination 1,2,3) */}
+          {/* ── MARKETPLACE ── */}
           {activeTab === "marketplace" && (
             <div className="space-y-6">
               <Card className="shadow-sm bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-4">
-                    <div className="relative flex-1 max-w-md">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                      <Input
-                        placeholder={`Trouvez ${isProd ? "des acheteurs" : "des produits"}...`}
-                        className="pl-10 bg-white"
-                      />
-                    </div>
+                    <SearchBarWithTrie
+                      placeholder={`Trouvez ${isProd ? "des acheteurs" : "des produits"}...`}
+                    />
                     <div className="flex items-center gap-2 text-sm font-medium text-orange-700">
                       <Flame className="w-4 h-4" />
-                      <span>Opportunités en direct</span>
+                      Opportunités en direct
                     </div>
                   </div>
                 </CardContent>
@@ -970,18 +1163,12 @@ export default function Dashboard() {
                   <OrganicSproutLoader text="Recherche des meilleures opportunités..." />
                 </div>
               ) : marketplaceItems.length === 0 ? (
-                <Card className="shadow-sm">
+                <Card>
                   <CardContent className="py-20 text-center">
-                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-orange-100 flex items-center justify-center">
-                      <Store className="w-10 h-10 text-orange-600" />
-                    </div>
+                    <Store className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
                       Aucune opportunité pour le moment
                     </h3>
-                    <p className="text-muted-foreground max-w-md mx-auto">
-                      Revenez bientôt pour découvrir de nouvelles{" "}
-                      {isProd ? "demandes d'achat" : "offres de produits"}
-                    </p>
                   </CardContent>
                 </Card>
               ) : (
@@ -990,21 +1177,20 @@ export default function Dashboard() {
                     <p className="text-sm font-medium flex items-center gap-2">
                       <Flame className="w-4 h-4 text-orange-600" />
                       <span className="text-orange-600">
-                        {paginationData.market.total}
+                        {filterBySearch(marketplaceItems).length}
                       </span>
                       <span className="text-muted-foreground">
                         opportunité(s) disponible(s)
                       </span>
                     </p>
                   </div>
-
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {marketplaceItems.map((item) => (
+                    {filterBySearch(marketplaceItems).map((item) => (
                       <Card
                         key={item.id}
                         className="hover:shadow-xl transition-all border-2 hover:border-orange-400 group relative overflow-hidden"
                       >
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 opacity-10 rounded-bl-full"></div>
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 opacity-10 rounded-bl-full" />
                         <CardContent className="p-6 relative">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
                             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-light text-lg shadow-md">
@@ -1019,7 +1205,7 @@ export default function Dashboard() {
                                   : `${item.producteur?.prenom} ${item.producteur?.nom}`}
                               </p>
                               <p className="text-xs text-muted-foreground capitalize">
-                                {isProd ? "Acheteur" : "Producteur"} certifié
+                                {isProd ? "Acheteur" : "Producteur"}
                               </p>
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                                 <MapPin className="w-3 h-3" />
@@ -1027,7 +1213,6 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
-
                           <div className="space-y-3">
                             <div className="flex items-center gap-2">
                               <Package className="w-5 h-5 text-orange-600" />
@@ -1036,7 +1221,6 @@ export default function Dashboard() {
                                   `Produit #${item.product_id}`}
                               </h3>
                             </div>
-
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div className="flex flex-col gap-1 p-2 rounded-lg bg-muted/50">
                                 <span className="text-muted-foreground text-xs">
@@ -1056,13 +1240,12 @@ export default function Dashboard() {
                                   {(isProd
                                     ? item.budget_max
                                     : item.prix_unitaire
-                                  ).toLocaleString()}{" "}
+                                  )?.toLocaleString()}{" "}
                                   Ar
                                 </span>
                               </div>
                             </div>
                           </div>
-
                           <div className="pt-4 border-t mt-4 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                               <Calendar className="w-3 h-3" />
@@ -1087,7 +1270,6 @@ export default function Dashboard() {
                       </Card>
                     ))}
                   </div>
-
                   <StandardPagination
                     page={paginationData.market.page}
                     totalPages={paginationData.market.total_pages}
@@ -1098,30 +1280,10 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* MATCHING */}
-          {activeTab === "matching" && (
-            <Card className="shadow-lg">
-              <CardContent className="py-20 text-center">
-                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
-                  <Target className="w-12 h-12 text-purple-600" />
-                </div>
-                <h3 className="text-2xl font-bold mb-3">
-                  Matching Intelligent
-                </h3>
-                <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                  Notre algorithme intelligent vous mettra automatiquement en
-                  relation avec les {isProd ? "acheteurs" : "producteurs"} les
-                  plus pertinents selon vos critères
-                </p>
-                <Badge variant="secondary" className="px-4 py-2">
-                  <Flame className="w-4 h-4 mr-2" />
-                  Disponible prochainement
-                </Badge>
-              </CardContent>
-            </Card>
-          )}
+          {/* ── MATCHING ── */}
+          {activeTab === "matching" && <SuggestionsTab user={user} />}
 
-          {/* ROUTE */}
+          {/* ── ROUTE ── */}
           {activeTab === "route" && (
             <Card className="shadow-lg">
               <CardContent className="py-20 text-center">
@@ -1133,7 +1295,7 @@ export default function Dashboard() {
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
                   Planifiez vos tournées de {isProd ? "livraison" : "collecte"}{" "}
-                  de manière optimale pour économiser du temps et du carburant
+                  de manière optimale
                 </p>
                 <Badge variant="secondary" className="px-4 py-2">
                   <Flame className="w-4 h-4 mr-2" />
@@ -1145,7 +1307,7 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* Dialog Détails */}
+      {/* ── Dialog Détails ── */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
@@ -1167,9 +1329,8 @@ export default function Dashboard() {
 
           {selectedItem && displayUser && (
             <div className="space-y-6">
-              {/* Profil du contact */}
               <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/20">
-                <div className="w-15 h-15 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-light text-2xl shadow-lg">
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-light text-2xl shadow-lg">
                   {displayUser.prenom?.[0]}
                   {displayUser.nom?.[0]}
                 </div>
@@ -1177,32 +1338,22 @@ export default function Dashboard() {
                   <p className="font-bold text-lg">
                     {displayUser.prenom} {displayUser.nom}
                   </p>
-                  <p className="text-sm text-muted-foreground capitalize flex items-center gap-1.5">
-                    <Users className="w-4 h-4" />
-                    {activeTab === "marketplace"
-                      ? isProd
-                        ? "Acheteur"
-                        : "Producteur"
-                      : isProd
-                        ? "Producteur"
-                        : "Acheteur"}{" "}
-                    certifié
-                  </p>
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
                     <MapPin className="w-4 h-4" />
                     {selectedItem.region}
                   </div>
+                  {displayUser.telephone && (
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-primary mt-1">
+                      <Phone className="w-4 h-4" />
+                      {displayUser.telephone}
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-col gap-2">
-                  <Badge variant="secondary" className="justify-center">
-                    Membre vérifié
-                  </Badge>
-                </div>
+                <Badge variant="secondary">Membre vérifié</Badge>
               </div>
 
-              {/* Informations détaillées */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 border rounded-lg hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-background to-muted/20">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Package className="w-5 h-5 text-primary" />
@@ -1219,21 +1370,19 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                <div className="p-4 border rounded-lg hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-background to-muted/20">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
                       <Scale className="w-5 h-5 text-blue-600" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Quantité disponible
-                    </p>
+                    <p className="text-sm text-muted-foreground">Quantité</p>
                   </div>
                   <p className="font-bold text-lg">
                     {selectedItem.quantite} {selectedItem.product?.unite}
                   </p>
                 </div>
 
-                <div className="p-4 border rounded-lg hover:border-green-200 transition-colors bg-gradient-to-br from-green-50 to-green-100/20">
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-green-50 to-green-100/20">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 rounded-lg bg-green-200 flex items-center justify-center">
                       <Banknote className="w-5 h-5 text-green-700" />
@@ -1249,18 +1398,19 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <p className="font-bold text-2xl text-green-600">
-                    {activeTab === "marketplace"
+                    {(activeTab === "marketplace"
                       ? isProd
                         ? selectedItem.budget_max
                         : selectedItem.prix_unitaire
                       : isProd
                         ? selectedItem.prix_unitaire
-                        : selectedItem.budget_max}{" "}
+                        : selectedItem.budget_max
+                    )?.toLocaleString()}{" "}
                     <span className="text-base">Ar</span>
                   </p>
                 </div>
 
-                <div className="p-4 border rounded-lg hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-background to-muted/20">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
                       <MapPin className="w-5 h-5 text-orange-600" />
@@ -1273,30 +1423,24 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Notes additionnelles */}
-              {selectedItem.notes && (
-                <div className="p-4 bg-muted/50 rounded-lg border">
-                  <p className="text-sm font-semibold mb-2 flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-primary" />
-                    Informations complémentaires
-                  </p>
-                  <p className="text-sm leading-relaxed">
-                    {selectedItem.notes}
-                  </p>
-                </div>
-              )}
-
-              {/* Actions */}
               <div className="flex gap-3 pt-4 border-t">
-                <Button className="flex-1 gap-2 shadow-md" size="lg">
+                {displayUser.telephone && (
+                  <Button
+                    className="flex-1 gap-2"
+                    size="lg"
+                    onClick={() => window.open(`tel:${displayUser.telephone}`)}
+                  >
+                    <Phone className="w-4 h-4" />
+                    Appeler
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  size="lg"
+                  onClick={() => setDetailsOpen(false)}
+                >
                   <Mail className="w-4 h-4" />
-                  Envoyer un message
-                </Button>
-                <Button variant="outline" className="flex-1 gap-2" size="lg">
-                  <Phone className="w-4 h-4" />
-                  Appeler
-                </Button>
-                <Button variant="ghost" onClick={() => setDetailsOpen(false)}>
                   Fermer
                 </Button>
               </div>
@@ -1304,6 +1448,102 @@ export default function Dashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Dialog suggestions par produit ── */}
+      <Dialog open={itemSuggestionsOpen} onOpenChange={setItemSuggestionsOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center text-primary-foreground shadow-sm">
+                <Star className="w-4 h-4" />
+              </div>
+              Suggestions — {focusedItem?.product?.nom}
+            </DialogTitle>
+            <DialogDescription>
+              {isProd
+                ? "Acheteurs intéressés par ce produit"
+                : "Producteurs disponibles pour ce produit"}
+            </DialogDescription>
+          </DialogHeader>
+          {itemSuggestionsLoading ? (
+            <div className="flex items-center justify-center py-10 gap-2 text-sm text-muted-foreground">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              Calcul des correspondances…
+            </div>
+          ) : itemSuggestions.length === 0 ? (
+            <div className="text-center py-10">
+              <Users className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+              <p className="text-sm font-medium">
+                Aucune correspondance pour ce produit
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Le système cherchera automatiquement dès qu'un partenaire publie
+                une annonce.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {itemSuggestions.map((s) => (
+                <div
+                  key={s.match_id}
+                  className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-base font-semibold text-primary">
+                      {Math.round(s.score)}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {s.contact_nom}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="w-2.5 h-2.5" />
+                        {s.contact_region}
+                      </span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground">
+                        {s.distance_km} km
+                      </span>
+                    </div>
+                    {s.contact_telephone && (
+                      <p className="text-xs font-medium text-primary mt-0.5">
+                        {s.contact_telephone}
+                      </p>
+                    )}
+                  </div>
+                  {s.contact_telephone && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1 text-xs"
+                      onClick={() => window.open(`tel:${s.contact_telephone}`)}
+                    >
+                      <Phone className="w-3 h-3" />
+                      Appeler
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── CrudDialog ── */}
+      <CrudDialog
+        open={crudOpen}
+        onClose={() => setCrudOpen(false)}
+        mode={crudMode}
+        type={isProd ? "offer" : "demand"}
+        item={crudItem}
+        user={user}
+        onSuccess={() => {
+          loadMyItems(1);
+          loadStats();
+        }}
+      />
     </div>
   );
 }
