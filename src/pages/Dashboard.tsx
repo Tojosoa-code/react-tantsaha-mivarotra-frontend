@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import CrudDialog from "@/components/CrudDialog";
 import SuggestionsTab from "@/components/SuggestionsTab";
 import NotificationBell from "@/components/NotificationBell";
+import NegociationsPanel from "@/components/NegociationsPanel";
+import NegociationChat from "@/components/NegociationChat";
+import ProductSuggestionsDialog from "@/components/ProductSuggestionsDialog";
 import {
   Dialog,
   DialogContent,
@@ -49,22 +52,170 @@ import {
   Users,
   Target,
   Handshake,
-  Mail,
   Phone,
   CheckCircle2,
   Clock,
   AlertCircle,
   Star,
   X,
+  MessageCircle,
+  Sparkles,
 } from "lucide-react";
 import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
+// ── SearchBarWithTrie défini EN DEHORS du composant ──────────────────────────
+// Ceci est critique : s'il est à l'intérieur, React le recrée à chaque frappe
+// et l'input perd le focus.
+interface SearchBarProps {
+  value: string;
+  onChange: (q: string) => void;
+  suggestions: string[];
+  suggestionsOpen: boolean;
+  onSelectSuggestion: (s: string) => void;
+  onClear: () => void;
+  onFocus: () => void;
+  placeholder: string;
+  searchRef: React.RefObject<HTMLDivElement>;
+}
+
+function SearchBarWithTrie({
+  value,
+  onChange,
+  suggestions,
+  suggestionsOpen,
+  onSelectSuggestion,
+  onClear,
+  onFocus,
+  placeholder,
+  searchRef,
+}: SearchBarProps) {
+  return (
+    <div className="relative flex-1 max-w-md" ref={searchRef}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none z-10" />
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
+        placeholder={placeholder}
+        className="pl-10 pr-9"
+        autoComplete="off"
+      />
+      {value && (
+        <button
+          type="button"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-10"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onClear();
+          }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {suggestionsOpen && suggestions.length > 0 && (
+        <div className="absolute z-[9999] top-full mt-1 w-full bg-card border rounded-xl shadow-xl overflow-hidden">
+          <div className="px-3 py-1.5 border-b bg-muted/30">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+              Suggestions
+            </p>
+          </div>
+          <ul className="max-h-48 overflow-y-auto divide-y">
+            {suggestions.map((s) => (
+              <li
+                key={s}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelectSuggestion(s);
+                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-primary/5 transition-colors"
+              >
+                <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Search className="w-3 h-3 text-primary" />
+                </div>
+                <span className="text-sm">{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Pagination définie EN DEHORS aussi ───────────────────────────────────────
+function StandardPagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (p: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  const pagesArr = Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+    if (totalPages <= 5) return i + 1;
+    if (page <= 3) return i + 1;
+    if (page >= totalPages - 2) return totalPages - 4 + i;
+    return page - 2 + i;
+  });
+  return (
+    <Card className="mt-6">
+      <CardContent className="py-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {page} sur {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onChange(page - 1)}
+              disabled={page === 1}
+            >
+              Précédent
+            </Button>
+            <div className="flex gap-1">
+              {pagesArr.map((p) => (
+                <Button
+                  key={p}
+                  variant={p === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onChange(p)}
+                  className="w-10"
+                >
+                  {p}
+                </Button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onChange(page + 1)}
+              disabled={page === totalPages}
+            >
+              Suivant
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Composant principal ──────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "home" | "my-primary" | "all-primary" | "marketplace" | "matching" | "route"
+    | "home"
+    | "my-primary"
+    | "all-primary"
+    | "marketplace"
+    | "matching"
+    | "negociations"
+    | "route"
   >("home");
 
   const [myItems, setMyItems] = useState<any[]>([]);
@@ -79,6 +230,8 @@ export default function Dashboard() {
 
   const [loading, setLoading] = useState(false);
   const [dropdowns, setDropdowns] = useState({ primary: false, market: false });
+
+  // Dialog détails marketplace
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -87,17 +240,16 @@ export default function Dashboard() {
   const [crudMode, setCrudMode] = useState<"create" | "edit">("create");
   const [crudItem, setCrudItem] = useState<any>(null);
 
-  // Suggestions par item
-  const [itemSuggestionsOpen, setItemSuggestionsOpen] = useState(false);
-  const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
-  const [itemSuggestionsLoading, setItemSuggestionsLoading] = useState(false);
-  const [focusedItem, setFocusedItem] = useState<any>(null);
+  // Product suggestions (marketplace + mes offres)
+  const [productSuggestionsOpen, setProductSuggestionsOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(
+    null,
+  );
+  const [selectedProductName, setSelectedProductName] = useState("");
 
-  // Recherche
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  // Négociation chat
+  const [negociationOpen, setNegociationOpen] = useState(false);
+  const [negociationData, setNegociationData] = useState<any>(null);
 
   // Stats
   const [statsData, setStatsData] = useState({
@@ -105,6 +257,30 @@ export default function Dashboard() {
     contacts_etablis: 0,
     negociations: 0,
   });
+
+  // Recherche — état centralisé ici, pas dans SearchBarWithTrie
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Fermer dropdown si clic dehors
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Reset recherche au changement de tab
+  useEffect(() => {
+    setSearchQuery("");
+    setSearchSuggestions([]);
+    setSearchOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -173,8 +349,7 @@ export default function Dashboard() {
       const res = await api.get(
         `${primaryEndpoint}?page=${page}&page_size=12&exclude_current_user=true`,
       );
-      const items = res.data.items || [];
-      setPrimaryItems(items);
+      setPrimaryItems(res.data.items || []);
       setPaginationData((prev) => ({
         ...prev,
         primary: {
@@ -195,8 +370,7 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const res = await api.get(`${marketEndpoint}?page=${page}&page_size=12`);
-      const items = res.data.items || [];
-      setMarketplaceItems(items);
+      setMarketplaceItems(res.data.items || []);
       setPaginationData((prev) => ({
         ...prev,
         market: {
@@ -212,25 +386,62 @@ export default function Dashboard() {
     }
   };
 
-  // CRUD handlers
+  // Recherche Trie
+  const handleSearch = useCallback(async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchSuggestions([]);
+      setSearchOpen(false);
+      return;
+    }
+    try {
+      const res = await api.get(
+        `/matches/search?prefix=${encodeURIComponent(q)}`,
+      );
+      const noms = (res.data ?? []).map((p: any) => p.nom);
+      setSearchSuggestions(noms);
+      setSearchOpen(noms.length > 0);
+    } catch {}
+  }, []);
+
+  const handleSelectSuggestion = (s: string) => {
+    setSearchQuery(s);
+    setSearchOpen(false);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setSearchSuggestions([]);
+    setSearchOpen(false);
+  };
+
+  const filterBySearch = (items: any[]) => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.toLowerCase();
+    return items.filter(
+      (item) =>
+        item.product?.nom?.toLowerCase().includes(q) ||
+        item.product?.categorie?.toLowerCase().includes(q) ||
+        item.region?.toLowerCase().includes(q),
+    );
+  };
+
+  // CRUD
   const handleCreate = () => {
     setCrudItem(null);
     setCrudMode("create");
     setCrudOpen(true);
   };
-
   const handleEdit = (item: any) => {
     setCrudItem(item);
     setCrudMode("edit");
     setCrudOpen(true);
   };
-
   const handleDelete = async (itemId: number) => {
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cet élément ?"))
-      return;
+    if (!window.confirm("Confirmer la suppression ?")) return;
     try {
       await api.delete(`${isProd ? "/offers" : "/demands"}/${itemId}`);
-      toast.success("Élément supprimé avec succès");
+      toast.success("Supprimé avec succès");
       loadMyItems(1);
     } catch {
       toast.error("Erreur lors de la suppression");
@@ -245,7 +456,7 @@ export default function Dashboard() {
       setSelectedItem(res.data);
       setDetailsOpen(true);
     } catch {
-      toast.error("Erreur lors du chargement des détails");
+      toast.error("Erreur de chargement");
     }
   };
 
@@ -255,7 +466,7 @@ export default function Dashboard() {
     navigate("/login");
   };
 
-  // Deadline helpers
+  // Deadline
   const isExpired = (item: any): boolean => {
     const deadline = isProd ? item.date_dispo_fin : item.date_souhaitee;
     if (!deadline) return false;
@@ -301,167 +512,20 @@ export default function Dashboard() {
     );
   };
 
-  // Suggestions par item
-  const handleRowClick = async (item: any) => {
-    if (isExpired(item)) return;
-    setFocusedItem(item);
-    setItemSuggestionsOpen(true);
-    setItemSuggestionsLoading(true);
-    try {
-      const res = await api.get("/matches/suggestions?limit=20");
-      const all = res.data.suggestions ?? [];
-      setItemSuggestions(
-        all.filter((s: any) => s.product_name === item.product?.nom),
-      );
-    } catch {
-      toast.error("Impossible de charger les suggestions");
-    } finally {
-      setItemSuggestionsLoading(false);
-    }
-  };
-
-  // Recherche Trie
-  const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
-      setSearchSuggestions([]);
-      setSearchOpen(false);
-      return;
-    }
-    try {
-      const res = await api.get(
-        `/matches/search?prefix=${encodeURIComponent(q)}`,
-      );
-      setSearchSuggestions((res.data ?? []).map((p: any) => p.nom));
-      setSearchOpen(true);
-    } catch {}
-  }, []);
-
-  const filterBySearch = (items: any[]) => {
-    if (!searchQuery.trim()) return items;
-    const q = searchQuery.toLowerCase();
-    return items.filter(
-      (item) =>
-        item.product?.nom?.toLowerCase().includes(q) ||
-        item.product?.categorie?.toLowerCase().includes(q) ||
-        item.region?.toLowerCase().includes(q),
-    );
+  // Ouvrir suggestions produit
+  const openProductSuggestions = (productId: number, productName: string) => {
+    setSelectedProductId(productId);
+    setSelectedProductName(productName);
+    setProductSuggestionsOpen(true);
   };
 
   const getDisplayUser = () => {
     if (!selectedItem) return null;
-    if (activeTab === "marketplace") {
+    if (activeTab === "marketplace")
       return isProd ? selectedItem.acheteur : selectedItem.producteur;
-    }
     return isProd ? selectedItem.producteur : selectedItem.acheteur;
   };
-
   const displayUser = getDisplayUser();
-
-  // Barre de recherche avec Trie
-  const SearchBarWithTrie = ({ placeholder }: { placeholder: string }) => (
-    <div className="relative flex-1 max-w-md" ref={searchRef}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-      <Input
-        value={searchQuery}
-        onChange={(e) => handleSearch(e.target.value)}
-        onFocus={() => searchSuggestions.length > 0 && setSearchOpen(true)}
-        placeholder={placeholder}
-        className="pl-10 pr-9"
-      />
-      {searchQuery && (
-        <button
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          onClick={() => {
-            setSearchQuery("");
-            setSearchSuggestions([]);
-            setSearchOpen(false);
-          }}
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      )}
-      {searchOpen && searchSuggestions.length > 0 && (
-        <div className="absolute z-50 top-full mt-1 w-full bg-card border rounded-lg shadow-lg overflow-hidden">
-          <ul className="max-h-40 overflow-y-auto divide-y">
-            {searchSuggestions.map((s) => (
-              <li
-                key={s}
-                onClick={() => {
-                  setSearchQuery(s);
-                  setSearchOpen(false);
-                }}
-                className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/50 text-sm"
-              >
-                <Search className="w-3.5 h-3.5 text-muted-foreground" />
-                {s}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-
-  const StandardPagination = ({
-    page,
-    totalPages,
-    onChange,
-  }: {
-    page: number;
-    totalPages: number;
-    onChange: (p: number) => void;
-  }) => {
-    if (totalPages <= 1) return null;
-    const pagesArr = Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-      if (totalPages <= 5) return i + 1;
-      if (page <= 3) return i + 1;
-      if (page >= totalPages - 2) return totalPages - 4 + i;
-      return page - 2 + i;
-    });
-    return (
-      <Card className="mt-6">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Page {page} sur {totalPages}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onChange(page - 1)}
-                disabled={page === 1}
-              >
-                Précédent
-              </Button>
-              <div className="flex gap-1">
-                {pagesArr.map((p) => (
-                  <Button
-                    key={p}
-                    variant={p === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => onChange(p)}
-                    className="w-10"
-                  >
-                    {p}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onChange(page + 1)}
-                disabled={page === totalPages}
-              >
-                Suivant
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   if (!user)
     return (
@@ -489,13 +553,14 @@ export default function Dashboard() {
         <div className="flex-1 p-4 space-y-2 overflow-y-auto">
           <Button
             variant={activeTab === "home" ? "default" : "ghost"}
-            className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+            className="w-full justify-start gap-3 hover:bg-primary/10"
             onClick={() => setActiveTab("home")}
           >
             <Home className="w-5 h-5" />
             Tableau de bord
           </Button>
 
+          {/* Mes offres/demandes */}
           <div
             onMouseEnter={() => setDropdowns((p) => ({ ...p, primary: true }))}
             onMouseLeave={() => setDropdowns((p) => ({ ...p, primary: false }))}
@@ -506,7 +571,7 @@ export default function Dashboard() {
                   ? "default"
                   : "ghost"
               }
-              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+              className="w-full justify-start gap-3 hover:bg-primary/10"
             >
               {isProd ? (
                 <ShoppingBag className="w-5 h-5" />
@@ -540,13 +605,14 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* Marketplace */}
           <div
             onMouseEnter={() => setDropdowns((p) => ({ ...p, market: true }))}
             onMouseLeave={() => setDropdowns((p) => ({ ...p, market: false }))}
           >
             <Button
               variant={activeTab === "marketplace" ? "default" : "ghost"}
-              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+              className="w-full justify-start gap-3 hover:bg-primary/10"
             >
               <Store className="w-5 h-5" />
               <span className="flex-1 text-left">Marketplace</span>
@@ -555,7 +621,7 @@ export default function Dashboard() {
               />
             </Button>
             {dropdowns.market && (
-              <div className="pl-4 py-1 space-y-1 animate-in slide-in-from-top-2">
+              <div className="pl-4 py-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "marketplace" ? "default" : "ghost"}
                   className="w-full justify-start gap-3"
@@ -568,18 +634,26 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="pt-2 border-t">
+          <div className="pt-2 border-t space-y-1">
             <Button
               variant={activeTab === "matching" ? "default" : "ghost"}
-              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+              className="w-full justify-start gap-3 hover:bg-primary/10"
               onClick={() => setActiveTab("matching")}
             >
               <Target className="w-5 h-5" />
-              Matching Intelligent
+              Suggestions pour vous
+            </Button>
+            <Button
+              variant={activeTab === "negociations" ? "default" : "ghost"}
+              className="w-full justify-start gap-3 hover:bg-primary/10"
+              onClick={() => setActiveTab("negociations")}
+            >
+              <MessageCircle className="w-5 h-5" />
+              Mes négociations
             </Button>
             <Button
               variant={activeTab === "route" ? "default" : "ghost"}
-              className="w-full justify-start gap-3 hover:bg-primary/10 transition-colors"
+              className="w-full justify-start gap-3 hover:bg-primary/10"
               onClick={() => setActiveTab("route")}
             >
               <Route className="w-5 h-5" />
@@ -588,10 +662,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="p-4 border-t mt-auto bg-muted/30">
+        <div className="p-4 border-t bg-muted/30">
           <div className="bg-card rounded-lg p-3 mb-3 shadow-sm border">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-light shadow">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-semibold shadow">
                 {user.prenom?.[0]}
                 {user.nom?.[0]}
               </div>
@@ -617,9 +691,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Contenu Principal ── */}
+      {/* ── Contenu principal ── */}
       <div className="flex-1 overflow-auto">
-        {/* Header */}
         <header className="h-16 border-b bg-card/95 backdrop-blur-sm px-8 flex items-center justify-between sticky top-0 z-10 shadow-sm">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
             {activeTab === "home" && "Tableau de bord"}
@@ -627,7 +700,8 @@ export default function Dashboard() {
             {activeTab === "all-primary" && "Analyse du marché"}
             {activeTab === "marketplace" &&
               (isProd ? "Opportunités d'achat" : "Opportunités de vente")}
-            {activeTab === "matching" && "Matching Intelligent"}
+            {activeTab === "matching" && "Suggestions pour vous"}
+            {activeTab === "negociations" && "Mes négociations"}
             {activeTab === "route" && "Optimisation de tournée"}
           </h1>
           <div className="flex items-center gap-2">
@@ -642,6 +716,7 @@ export default function Dashboard() {
                   loadPrimaryItems(paginationData.primary.page);
                 if (activeTab === "marketplace")
                   loadMarketplaceItems(paginationData.market.page);
+                loadStats();
               }}
             >
               <RefreshCw className="w-4 h-4" />
@@ -658,16 +733,17 @@ export default function Dashboard() {
                 <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-primary/10 rounded-full">
                   <Handshake className="w-5 h-5 text-primary" />
                   <span className="text-sm font-medium text-primary">
-                    Plateforme de mise en relation
+                    La plateforme agricole qui connecte les producteurs et les
+                    acheteurs de Madagascar
                   </span>
                 </div>
                 <h2 className="text-4xl font-bold mb-4">
-                  Bienvenue, {user.prenom} !
+                  Bienvenue, {user.prenom} ! 👋
                 </h2>
                 <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                  Connectez-vous directement avec{" "}
-                  {isProd ? "des acheteurs" : "des producteurs"} locaux et
-                  développez votre activité agricole en toute confiance
+                  {isProd
+                    ? "Vendez vos récoltes au juste prix, directement aux acheteurs de votre région. Fini les intermédiaires."
+                    : "Trouvez des producteurs locaux fiables, négociez directement et approvisionnez-vous au meilleur prix."}
                 </p>
               </div>
 
@@ -691,24 +767,27 @@ export default function Dashboard() {
                       {myItems.length}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {isProd ? "Produits disponibles" : "Demandes actives"}
+                      {isProd ? "Produits en vente" : "Demandes actives"}
                     </p>
                   </CardContent>
                 </Card>
 
                 <Card
                   className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
-                  onClick={() => setActiveTab("all-primary")}
+                  onClick={() => setActiveTab("matching")}
                 >
                   <CardContent className="pt-6 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <TrendingUp className="w-8 h-8 text-white" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Sparkles className="w-8 h-8 text-white" />
                     </div>
                     <h3 className="font-bold text-lg mb-2">
-                      Analyse du marché
+                      Suggestions pour vous
                     </h3>
-                    <p className="text-sm text-muted-foreground mt-3">
-                      Suivez les tendances et ajustez vos prix en temps réel
+                    <p className="text-4xl font-bold text-violet-600 mb-2">
+                      {statsData.total_matches}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Correspondances trouvées
                     </p>
                   </CardContent>
                 </Card>
@@ -726,14 +805,13 @@ export default function Dashboard() {
                     </h3>
                     <p className="text-sm text-muted-foreground mt-3">
                       {isProd
-                        ? "Découvrez les demandes d'achat près de chez vous"
-                        : "Trouvez les meilleurs produits locaux disponibles"}
+                        ? "Des acheteurs cherchent vos produits en ce moment"
+                        : "Des producteurs locaux proposent leurs récoltes"}
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Stats réelles */}
               <div className="grid md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
@@ -753,15 +831,15 @@ export default function Dashboard() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Star className="w-5 h-5 text-blue-600" />
+                      <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center">
+                        <Sparkles className="w-5 h-5 text-violet-600" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">
                           {statsData.total_matches}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Correspondances trouvées
+                          Correspondances
                         </p>
                       </div>
                     </div>
@@ -770,8 +848,8 @@ export default function Dashboard() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                        <Users className="w-5 h-5 text-purple-600" />
+                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <Users className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">
@@ -816,9 +894,8 @@ export default function Dashboard() {
                   </CardTitle>
                   <p className="text-sm text-muted-foreground mt-1">
                     {paginationData.my.total}{" "}
-                    {isProd
-                      ? "produit(s) disponible(s)"
-                      : "demande(s) active(s)"}
+                    {isProd ? "produit(s) en vente" : "demande(s) active(s)"}
+                    {" · "}cliquez sur une ligne pour voir les opportunités
                   </p>
                 </div>
                 <Button onClick={handleCreate} className="gap-2 shadow-sm">
@@ -838,13 +915,13 @@ export default function Dashboard() {
                     </div>
                     <h3 className="text-xl font-semibold mb-2">
                       {isProd
-                        ? "Commencez à vendre vos produits"
+                        ? "Publiez votre première offre"
                         : "Publiez votre première demande"}
                     </h3>
                     <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                       {isProd
-                        ? "Présentez vos produits à des milliers d'acheteurs potentiels en quelques clics"
-                        : "Trouvez les meilleurs producteurs locaux pour vos besoins"}
+                        ? "Atteignez des centaines d'acheteurs locaux et vendez vos récoltes au juste prix."
+                        : "Décrivez vos besoins et laissez les producteurs venir à vous."}
                     </p>
                     <Button size="lg" onClick={handleCreate} className="gap-2">
                       <PlusCircle className="w-5 h-5" />
@@ -869,13 +946,13 @@ export default function Dashboard() {
                               {isProd ? "Prix unitaire" : "Budget max"}
                             </TableHead>
                             <TableHead className="font-semibold">
-                              Localisation
+                              Région
                             </TableHead>
                             <TableHead className="font-semibold">
                               Deadline
                             </TableHead>
                             <TableHead className="font-semibold">
-                              Suggestions
+                              Opportunités
                             </TableHead>
                             <TableHead className="text-right font-semibold">
                               Actions
@@ -893,12 +970,14 @@ export default function Dashboard() {
                               return (
                                 <TableRow
                                   key={item.id}
-                                  onClick={() => handleRowClick(item)}
-                                  className={`transition-colors ${
-                                    expired
-                                      ? "opacity-50 bg-muted/30 cursor-default"
-                                      : "hover:bg-primary/5 cursor-pointer"
-                                  }`}
+                                  onClick={() => {
+                                    if (!expired)
+                                      openProductSuggestions(
+                                        item.product_id,
+                                        item.product?.nom ?? "",
+                                      );
+                                  }}
+                                  className={`transition-colors ${expired ? "opacity-50 bg-muted/30 cursor-default" : "hover:bg-primary/5 cursor-pointer"}`}
                                 >
                                   <TableCell>
                                     <div className="flex items-center gap-3">
@@ -962,7 +1041,7 @@ export default function Dashboard() {
                                       </span>
                                     ) : (
                                       <Badge className="gap-1 text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 cursor-pointer">
-                                        <Star className="w-2.5 h-2.5" />
+                                        <Sparkles className="w-2.5 h-2.5" />
                                         Voir
                                       </Badge>
                                     )}
@@ -1014,11 +1093,21 @@ export default function Dashboard() {
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-4">
                     <SearchBarWithTrie
+                      value={searchQuery}
+                      onChange={handleSearch}
+                      suggestions={searchSuggestions}
+                      suggestionsOpen={searchOpen}
+                      onSelectSuggestion={handleSelectSuggestion}
+                      onClear={handleClearSearch}
+                      onFocus={() =>
+                        searchSuggestions.length > 0 && setSearchOpen(true)
+                      }
                       placeholder={`Rechercher parmi les ${primaryLabel.toLowerCase()}...`}
+                      searchRef={searchRef}
                     />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <TrendingUp className="w-4 h-4" />
-                      <span>Analyse de la concurrence</span>
+                      <span>Analysez les prix du marché en temps réel</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1029,25 +1118,26 @@ export default function Dashboard() {
                   <OrganicSproutLoader text="Analyse du marché en cours..." />
                 </div>
               ) : primaryItems.length === 0 ? (
-                <Card className="shadow-sm">
+                <Card>
                   <CardContent className="py-20 text-center">
                     <Eye className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
                       Aucune donnée disponible
                     </h3>
+                    <p className="text-muted-foreground">
+                      Les annonces des autres utilisateurs apparaîtront ici.
+                    </p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Package className="w-4 h-4" />
-                      <span className="font-medium">
-                        {filterBySearch(primaryItems).length}
-                      </span>{" "}
-                      {primaryLabel.toLowerCase()} disponible(s)
-                    </p>
-                  </div>
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    <span className="font-medium">
+                      {filterBySearch(primaryItems).length}
+                    </span>{" "}
+                    {primaryLabel.toLowerCase()} sur le marché
+                  </p>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filterBySearch(primaryItems).map((item) => (
                       <Card
@@ -1056,7 +1146,7 @@ export default function Dashboard() {
                       >
                         <CardContent className="p-6">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-light text-lg">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-semibold text-lg">
                               {isProd
                                 ? item.producteur?.prenom?.[0]
                                 : item.acheteur?.prenom?.[0]}
@@ -1111,10 +1201,7 @@ export default function Dashboard() {
                               <Calendar className="w-3 h-3" />
                               {new Date(item.created_at).toLocaleDateString(
                                 "fr-FR",
-                                {
-                                  day: "numeric",
-                                  month: "short",
-                                },
+                                { day: "numeric", month: "short" },
                               )}
                             </span>
                             <Button
@@ -1148,7 +1235,17 @@ export default function Dashboard() {
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-4">
                     <SearchBarWithTrie
-                      placeholder={`Trouvez ${isProd ? "des acheteurs" : "des produits"}...`}
+                      value={searchQuery}
+                      onChange={handleSearch}
+                      suggestions={searchSuggestions}
+                      suggestionsOpen={searchOpen}
+                      onSelectSuggestion={handleSelectSuggestion}
+                      onClear={handleClearSearch}
+                      onFocus={() =>
+                        searchSuggestions.length > 0 && setSearchOpen(true)
+                      }
+                      placeholder={`Trouvez ${isProd ? "des acheteurs pour vos produits" : "des producteurs près de chez vous"}...`}
+                      searchRef={searchRef}
                     />
                     <div className="flex items-center gap-2 text-sm font-medium text-orange-700">
                       <Flame className="w-4 h-4" />
@@ -1169,21 +1266,23 @@ export default function Dashboard() {
                     <h3 className="text-xl font-semibold mb-2">
                       Aucune opportunité pour le moment
                     </h3>
+                    <p className="text-muted-foreground">
+                      Revenez bientôt — de nouvelles annonces sont publiées
+                      chaque jour.
+                    </p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-orange-600" />
-                      <span className="text-orange-600">
-                        {filterBySearch(marketplaceItems).length}
-                      </span>
-                      <span className="text-muted-foreground">
-                        opportunité(s) disponible(s)
-                      </span>
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-orange-600" />
+                    <span className="text-orange-600">
+                      {filterBySearch(marketplaceItems).length}
+                    </span>
+                    <span className="text-muted-foreground">
+                      opportunité(s) disponible(s)
+                    </span>
+                  </p>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filterBySearch(marketplaceItems).map((item) => (
                       <Card
@@ -1193,7 +1292,7 @@ export default function Dashboard() {
                         <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 opacity-10 rounded-bl-full" />
                         <CardContent className="p-6 relative">
                           <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-light text-lg shadow-md">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-semibold text-lg shadow-md">
                               {isProd
                                 ? item.acheteur?.prenom?.[0]
                                 : item.producteur?.prenom?.[0]}
@@ -1205,7 +1304,9 @@ export default function Dashboard() {
                                   : `${item.producteur?.prenom} ${item.producteur?.nom}`}
                               </p>
                               <p className="text-xs text-muted-foreground capitalize">
-                                {isProd ? "Acheteur" : "Producteur"}
+                                {isProd
+                                  ? "Acheteur vérifié"
+                                  : "Producteur local"}
                               </p>
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                                 <MapPin className="w-3 h-3" />
@@ -1251,19 +1352,21 @@ export default function Dashboard() {
                               <Calendar className="w-3 h-3" />
                               {new Date(item.created_at).toLocaleDateString(
                                 "fr-FR",
-                                {
-                                  day: "numeric",
-                                  month: "short",
-                                },
+                                { day: "numeric", month: "short" },
                               )}
                             </span>
                             <Button
                               size="sm"
-                              onClick={() => handleViewDetails(item.id)}
-                              className="gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-sm"
+                              className="gap-1.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-sm"
+                              onClick={() =>
+                                openProductSuggestions(
+                                  item.product_id,
+                                  item.product?.nom ?? "",
+                                )
+                              }
                             >
-                              <Eye className="w-4 h-4" />
-                              Détails
+                              <Sparkles className="w-3.5 h-3.5" />
+                              Voir les opportunités
                             </Button>
                           </div>
                         </CardContent>
@@ -1280,8 +1383,11 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── MATCHING ── */}
+          {/* ── SUGGESTIONS ── */}
           {activeTab === "matching" && <SuggestionsTab user={user} />}
+
+          {/* ── NÉGOCIATIONS ── */}
+          {activeTab === "negociations" && <NegociationsPanel user={user} />}
 
           {/* ── ROUTE ── */}
           {activeTab === "route" && (
@@ -1295,7 +1401,7 @@ export default function Dashboard() {
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
                   Planifiez vos tournées de {isProd ? "livraison" : "collecte"}{" "}
-                  de manière optimale
+                  de manière optimale pour économiser du temps et du carburant.
                 </p>
                 <Badge variant="secondary" className="px-4 py-2">
                   <Flame className="w-4 h-4 mr-2" />
@@ -1309,9 +1415,9 @@ export default function Dashboard() {
 
       {/* ── Dialog Détails ── */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl flex items-center gap-2">
+            <DialogTitle className="text-xl flex items-center gap-2">
               <Package className="w-6 h-6 text-primary" />
               {selectedItem?.product?.nom || "Détails de l'annonce"}
             </DialogTitle>
@@ -1328,9 +1434,9 @@ export default function Dashboard() {
           </DialogHeader>
 
           {selectedItem && displayUser && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/20">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-light text-2xl shadow-lg">
+            <div className="space-y-5">
+              <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-xl border border-primary/20">
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-semibold text-2xl shadow-lg">
                   {displayUser.prenom?.[0]}
                   {displayUser.nom?.[0]}
                 </div>
@@ -1338,12 +1444,12 @@ export default function Dashboard() {
                   <p className="font-bold text-lg">
                     {displayUser.prenom} {displayUser.nom}
                   </p>
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
                     <MapPin className="w-4 h-4" />
                     {selectedItem.region}
                   </div>
                   {displayUser.telephone && (
-                    <div className="flex items-center gap-1.5 text-sm font-medium text-primary mt-1">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-primary mt-0.5">
                       <Phone className="w-4 h-4" />
                       {displayUser.telephone}
                     </div>
@@ -1352,51 +1458,34 @@ export default function Dashboard() {
                 <Badge variant="secondary">Membre vérifié</Badge>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 border rounded-lg bg-gradient-to-br from-background to-muted/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Package className="w-5 h-5 text-primary" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">Produit</p>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 border rounded-xl bg-gradient-to-br from-background to-muted/20">
+                  <p className="text-xs text-muted-foreground mb-1">Produit</p>
                   <p className="font-bold text-lg">
-                    {selectedItem.product?.nom || "Non spécifié"}
+                    {selectedItem.product?.nom}
                   </p>
                   {selectedItem.product?.categorie && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedItem.product.categorie}
                     </p>
                   )}
                 </div>
-
-                <div className="p-4 border rounded-lg bg-gradient-to-br from-background to-muted/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <Scale className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">Quantité</p>
-                  </div>
+                <div className="p-4 border rounded-xl bg-gradient-to-br from-background to-muted/20">
+                  <p className="text-xs text-muted-foreground mb-1">Quantité</p>
                   <p className="font-bold text-lg">
                     {selectedItem.quantite} {selectedItem.product?.unite}
                   </p>
                 </div>
-
-                <div className="p-4 border rounded-lg bg-gradient-to-br from-green-50 to-green-100/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-lg bg-green-200 flex items-center justify-center">
-                      <Banknote className="w-5 h-5 text-green-700" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {activeTab === "marketplace"
-                        ? isProd
-                          ? "Budget maximum"
-                          : "Prix unitaire"
-                        : isProd
-                          ? "Prix unitaire"
-                          : "Budget maximum"}
-                    </p>
-                  </div>
+                <div className="p-4 border rounded-xl bg-gradient-to-br from-green-50 to-green-100/20 col-span-2">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {activeTab === "marketplace"
+                      ? isProd
+                        ? "Budget maximum"
+                        : "Prix unitaire"
+                      : isProd
+                        ? "Prix unitaire"
+                        : "Budget maximum"}
+                  </p>
                   <p className="font-bold text-2xl text-green-600">
                     {(activeTab === "marketplace"
                       ? isProd
@@ -1406,24 +1495,12 @@ export default function Dashboard() {
                         ? selectedItem.prix_unitaire
                         : selectedItem.budget_max
                     )?.toLocaleString()}{" "}
-                    <span className="text-base">Ar</span>
+                    <span className="text-base font-normal">Ar</span>
                   </p>
-                </div>
-
-                <div className="p-4 border rounded-lg bg-gradient-to-br from-background to-muted/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                      <MapPin className="w-5 h-5 text-orange-600" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Localisation
-                    </p>
-                  </div>
-                  <p className="font-bold text-lg">{selectedItem.region}</p>
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t">
+              <div className="flex gap-3">
                 {displayUser.telephone && (
                   <Button
                     className="flex-1 gap-2"
@@ -1438,10 +1515,16 @@ export default function Dashboard() {
                   variant="outline"
                   className="flex-1 gap-2"
                   size="lg"
-                  onClick={() => setDetailsOpen(false)}
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    openProductSuggestions(
+                      selectedItem.product_id,
+                      selectedItem.product?.nom ?? "",
+                    );
+                  }}
                 >
-                  <Mail className="w-4 h-4" />
-                  Fermer
+                  <Sparkles className="w-4 h-4" />
+                  Voir les opportunités
                 </Button>
               </div>
             </div>
@@ -1449,87 +1532,30 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog suggestions par produit ── */}
-      <Dialog open={itemSuggestionsOpen} onOpenChange={setItemSuggestionsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center text-primary-foreground shadow-sm">
-                <Star className="w-4 h-4" />
-              </div>
-              Suggestions — {focusedItem?.product?.nom}
-            </DialogTitle>
-            <DialogDescription>
-              {isProd
-                ? "Acheteurs intéressés par ce produit"
-                : "Producteurs disponibles pour ce produit"}
-            </DialogDescription>
-          </DialogHeader>
-          {itemSuggestionsLoading ? (
-            <div className="flex items-center justify-center py-10 gap-2 text-sm text-muted-foreground">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              Calcul des correspondances…
-            </div>
-          ) : itemSuggestions.length === 0 ? (
-            <div className="text-center py-10">
-              <Users className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm font-medium">
-                Aucune correspondance pour ce produit
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Le système cherchera automatiquement dès qu'un partenaire publie
-                une annonce.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {itemSuggestions.map((s) => (
-                <div
-                  key={s.match_id}
-                  className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <span className="text-base font-semibold text-primary">
-                      {Math.round(s.score)}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {s.contact_nom}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="w-2.5 h-2.5" />
-                        {s.contact_region}
-                      </span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">
-                        {s.distance_km} km
-                      </span>
-                    </div>
-                    {s.contact_telephone && (
-                      <p className="text-xs font-medium text-primary mt-0.5">
-                        {s.contact_telephone}
-                      </p>
-                    )}
-                  </div>
-                  {s.contact_telephone && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 gap-1 text-xs"
-                      onClick={() => window.open(`tel:${s.contact_telephone}`)}
-                    >
-                      <Phone className="w-3 h-3" />
-                      Appeler
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* ── ProductSuggestionsDialog ── */}
+      <ProductSuggestionsDialog
+        open={productSuggestionsOpen}
+        onClose={() => setProductSuggestionsOpen(false)}
+        productId={selectedProductId}
+        productName={selectedProductName}
+        user={user}
+        onNegociate={(s) => {
+          setNegociationData(s);
+          setNegociationOpen(true);
+        }}
+      />
+
+      {/* ── NegociationChat ── */}
+      <NegociationChat
+        open={negociationOpen}
+        onClose={() => setNegociationOpen(false)}
+        matchId={negociationData?.match_id ?? null}
+        contactNom={negociationData?.contact_nom ?? ""}
+        productName={negociationData?.product_name ?? ""}
+        productUnite={negociationData?.product_unite}
+        contactTelephone={negociationData?.contact_telephone}
+        matchStatut={negociationData?.match_statut}
+      />
 
       {/* ── CrudDialog ── */}
       <CrudDialog
