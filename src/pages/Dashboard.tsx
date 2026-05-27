@@ -10,6 +10,8 @@ import NotificationBell from "@/components/NotificationBell";
 import NegociationsPanel from "@/components/NegociationsPanel";
 import NegociationChat from "@/components/NegociationChat";
 import ProductSuggestionsDialog from "@/components/ProductSuggestionsDialog";
+import CheckoutDialog from "@/components/CheckoutDialog";
+import CommandesPage from "@/components/CommandesPage";
 import {
   Dialog,
   DialogContent,
@@ -34,12 +36,10 @@ import {
   Route,
   LogOut,
   ShoppingBag,
-  Truck,
   Sprout,
   RefreshCw,
   ChevronDown,
   MapPin,
-  Calendar,
   Eye,
   Pencil,
   Trash2,
@@ -48,10 +48,7 @@ import {
   Banknote,
   Store,
   Flame,
-  TrendingUp,
   Users,
-  Target,
-  Handshake,
   Phone,
   CheckCircle2,
   Clock,
@@ -60,12 +57,14 @@ import {
   X,
   MessageCircle,
   Sparkles,
+  ShoppingCart,
+  ArrowRight,
+  Leaf,
+  BarChart3,
+  Loader2,
 } from "lucide-react";
 import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
-// ── SearchBarWithTrie défini EN DEHORS du composant ──────────────────────────
-// Ceci est critique : s'il est à l'intérieur, React le recrée à chaque frappe
-// et l'input perd le focus.
 interface SearchBarProps {
   value: string;
   onChange: (q: string) => void;
@@ -91,7 +90,7 @@ function SearchBarWithTrie({
 }: SearchBarProps) {
   return (
     <div className="relative flex-1 max-w-md" ref={searchRef}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none z-10" />
+      <Search className="absolute top-1.5 left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -103,7 +102,7 @@ function SearchBarWithTrie({
       {value && (
         <button
           type="button"
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-10"
+          className="absolute right-6 top-10 text-muted-foreground hover:text-foreground z-10"
           onMouseDown={(e) => {
             e.preventDefault();
             onClear();
@@ -113,7 +112,7 @@ function SearchBarWithTrie({
         </button>
       )}
       {suggestionsOpen && suggestions.length > 0 && (
-        <div className="absolute z-[9999] top-full mt-1 w-full bg-card border rounded-xl shadow-xl overflow-hidden">
+        <div className="top-full mt-1 w-full bg-card border rounded-xl shadow-xl overflow-y-auto">
           <div className="px-3 py-1.5 border-b bg-muted/30">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
               Suggestions
@@ -142,7 +141,6 @@ function SearchBarWithTrie({
   );
 }
 
-// ── Pagination définie EN DEHORS aussi ───────────────────────────────────────
 function StandardPagination({
   page,
   totalPages,
@@ -203,18 +201,17 @@ function StandardPagination({
   );
 }
 
-// ── Composant principal ──────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
-
   const [activeTab, setActiveTab] = useState<
     | "home"
     | "my-primary"
     | "all-primary"
     | "marketplace"
-    | "matching"
+    | "suggestions"
     | "negociations"
+    | "commandes"
     | "route"
   >("home");
 
@@ -231,40 +228,44 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [dropdowns, setDropdowns] = useState({ primary: false, market: false });
 
-  // Dialog détails marketplace
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  // CRUD
   const [crudOpen, setCrudOpen] = useState(false);
   const [crudMode, setCrudMode] = useState<"create" | "edit">("create");
   const [crudItem, setCrudItem] = useState<any>(null);
 
-  // Product suggestions (marketplace + mes offres)
   const [productSuggestionsOpen, setProductSuggestionsOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(
     null,
   );
   const [selectedProductName, setSelectedProductName] = useState("");
 
-  // Négociation chat
   const [negociationOpen, setNegociationOpen] = useState(false);
   const [negociationData, setNegociationData] = useState<any>(null);
 
-  // Stats
+  // Négociation depuis marketplace
+  const [marketNegociatOpen, setMarketNegociatOpen] = useState(false);
+  const [marketNegociatData, setMarketNegociatData] = useState<any>(null);
+  const [marketNegociatLoading, setMarketNegociatLoading] = useState<
+    number | null
+  >(null);
+
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutOffer, setCheckoutOffer] = useState<any>(null);
+
   const [statsData, setStatsData] = useState({
     total_matches: 0,
     contacts_etablis: 0,
     negociations: 0,
+    commandes_pending: 0,
   });
 
-  // Recherche — état centralisé ici, pas dans SearchBarWithTrie
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Fermer dropdown si clic dehors
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -275,7 +276,6 @@ export default function Dashboard() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Reset recherche au changement de tab
   useEffect(() => {
     setSearchQuery("");
     setSearchSuggestions([]);
@@ -293,7 +293,15 @@ export default function Dashboard() {
   }, [navigate]);
 
   const isProd = user?.role === "producteur";
-  const primaryLabel = isProd ? "Offres" : "Demandes";
+
+  const labels = {
+    mySection: isProd ? "Mes récoltes" : "Mes recherches",
+    newItem: isProd ? "Publier une récolte" : "Publier ma recherche",
+    marketplace: isProd ? "Trouver des acheteurs" : "Trouver des producteurs",
+    suggestions: isProd ? "Acheteurs intéressés" : "Producteurs recommandés",
+    itemsLabel: isProd ? "récolte(s) publiée(s)" : "recherche(s) active(s)",
+  };
+
   const primaryEndpoint = isProd ? "/offers" : "/demands";
   const myEndpoint = isProd ? "/users/me/offers" : "/users/me/demands";
   const marketEndpoint = isProd ? "/demands" : "/offers";
@@ -308,15 +316,24 @@ export default function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const res = await api.get("/matches/suggestions?limit=50");
-      const suggestions = res.data.suggestions ?? [];
+      const [matchRes, txRes] = await Promise.all([
+        api.get("/matches/suggestions?limit=50"),
+        isProd
+          ? api.get("/transactions/commandes-recues")
+          : api.get("/transactions/mes-commandes"),
+      ]);
+      const suggestions = matchRes.data.suggestions ?? [];
+      const transactions = txRes.data ?? [];
       setStatsData({
-        total_matches: res.data.count ?? 0,
+        total_matches: matchRes.data.count ?? 0,
         contacts_etablis: suggestions.filter((s: any) =>
           ["interested", "negotiating", "done"].includes(s.match_statut),
         ).length,
         negociations: suggestions.filter(
           (s: any) => s.match_statut === "negotiating",
+        ).length,
+        commandes_pending: transactions.filter(
+          (t: any) => t.statut === "pending",
         ).length,
       });
     } catch {}
@@ -328,12 +345,14 @@ export default function Dashboard() {
     try {
       const res = await api.get(`${myEndpoint}?page=${page}&page_size=12`);
       const items = res.data.items || res.data || [];
-      const total = res.data.total ?? items.length;
-      const total_pages = (res.data.total_pages ?? Math.ceil(total / 12)) || 1;
       setMyItems(items);
       setPaginationData((prev) => ({
         ...prev,
-        my: { total, page, total_pages },
+        my: {
+          total: res.data.total ?? items.length,
+          page,
+          total_pages: res.data.total_pages ?? 1,
+        },
       }));
     } catch {
       toast.error("Erreur de chargement");
@@ -386,57 +405,18 @@ export default function Dashboard() {
     }
   };
 
-  // Recherche Trie
-  const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
-      setSearchSuggestions([]);
-      setSearchOpen(false);
-      return;
-    }
-    try {
-      const res = await api.get(
-        `/matches/search?prefix=${encodeURIComponent(q)}`,
-      );
-      const noms = (res.data ?? []).map((p: any) => p.nom);
-      setSearchSuggestions(noms);
-      setSearchOpen(noms.length > 0);
-    } catch {}
-  }, []);
-
-  const handleSelectSuggestion = (s: string) => {
-    setSearchQuery(s);
-    setSearchOpen(false);
-  };
-
-  const handleClearSearch = () => {
-    setSearchQuery("");
-    setSearchSuggestions([]);
-    setSearchOpen(false);
-  };
-
-  const filterBySearch = (items: any[]) => {
-    if (!searchQuery.trim()) return items;
-    const q = searchQuery.toLowerCase();
-    return items.filter(
-      (item) =>
-        item.product?.nom?.toLowerCase().includes(q) ||
-        item.product?.categorie?.toLowerCase().includes(q) ||
-        item.region?.toLowerCase().includes(q),
-    );
-  };
-
-  // CRUD
   const handleCreate = () => {
     setCrudItem(null);
     setCrudMode("create");
     setCrudOpen(true);
   };
+
   const handleEdit = (item: any) => {
     setCrudItem(item);
     setCrudMode("edit");
     setCrudOpen(true);
   };
+
   const handleDelete = async (itemId: number) => {
     if (!window.confirm("Confirmer la suppression ?")) return;
     try {
@@ -445,6 +425,17 @@ export default function Dashboard() {
       loadMyItems(1);
     } catch {
       toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const handleMarkEpuise = async (offerId: number) => {
+    if (!window.confirm("Marquer ce produit comme épuisé ?")) return;
+    try {
+      await api.post(`/transactions/offer/${offerId}/epuise`);
+      toast.success("Produit marqué comme épuisé");
+      loadMyItems(1);
+    } catch {
+      toast.error("Erreur");
     }
   };
 
@@ -460,20 +451,92 @@ export default function Dashboard() {
     }
   };
 
+  const handleCheckout = (item: any) => {
+    const producteur = item.producteur;
+    setCheckoutOffer({
+      id: item.id,
+      product_name: item.product?.nom ?? "",
+      product_unite: item.product?.unite ?? "kg",
+      quantite: parseFloat(item.quantite),
+      quantite_restante: item.quantite_restante
+        ? parseFloat(item.quantite_restante)
+        : undefined,
+      prix_unitaire: parseFloat(item.prix_unitaire),
+      producteur_nom: producteur
+        ? `${producteur.prenom} ${producteur.nom}`
+        : "Producteur",
+      producteur_telephone: producteur?.telephone,
+      producteur_region: item.region,
+    });
+    setDetailsOpen(false);
+    setCheckoutOpen(true);
+  };
+
+  const handleNegocierMarketplace = async (item: any) => {
+    setMarketNegociatLoading(item.id);
+    try {
+      const res = await api.get(`/matches/for-product/${item.product_id}`);
+      const suggestions = res.data.suggestions ?? [];
+      if (suggestions.length === 0) {
+        toast.error(
+          isProd
+            ? "Publiez d'abord une offre pour ce produit afin de pouvoir négocier"
+            : "Publiez d'abord une recherche pour ce produit afin de pouvoir négocier",
+        );
+        return;
+      }
+      const match = suggestions[0];
+      const contact = isProd ? item.acheteur : item.producteur;
+      setMarketNegociatData({
+        match_id: match.match_id,
+        contact_nom: match.contact_nom,
+        product_name: item.product?.nom ?? "",
+        product_unite: item.product?.unite ?? "kg",
+        contact_telephone: match.contact_telephone,
+        match_statut: match.match_statut,
+        offer_id: isProd ? null : item.id,
+        offer_prix_unitaire: isProd ? null : parseFloat(item.prix_unitaire),
+        offer_quantite: isProd ? null : parseFloat(item.quantite),
+        offer_quantite_restante: item.quantite_restante
+          ? parseFloat(item.quantite_restante)
+          : null,
+        producteur_nom: isProd
+          ? `${user.prenom} ${user.nom}`
+          : contact
+            ? `${contact.prenom} ${contact.nom}`
+            : "",
+        producteur_region: item.region,
+      });
+      setMarketNegociatOpen(true);
+    } catch {
+      toast.error("Impossible d'ouvrir la négociation");
+    } finally {
+      setMarketNegociatLoading(null);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.clear();
     toast.success("À bientôt !");
     navigate("/login");
   };
 
-  // Deadline
   const isExpired = (item: any): boolean => {
     const deadline = isProd ? item.date_dispo_fin : item.date_souhaitee;
     if (!deadline) return false;
     return new Date(deadline) < new Date();
   };
 
+  const isEpuise = (item: any): boolean => item.statut === "epuise";
+
   const DeadlineBadge = ({ item }: { item: any }) => {
+    if (isEpuise(item))
+      return (
+        <Badge className="text-xs gap-1 bg-gray-100 text-gray-500 border-gray-200">
+          <X className="w-2.5 h-2.5" />
+          Épuisé
+        </Badge>
+      );
     const deadline = isProd ? item.date_dispo_fin : item.date_souhaitee;
     if (!deadline)
       return <span className="text-xs text-muted-foreground">—</span>;
@@ -512,11 +575,38 @@ export default function Dashboard() {
     );
   };
 
-  // Ouvrir suggestions produit
   const openProductSuggestions = (productId: number, productName: string) => {
     setSelectedProductId(productId);
     setSelectedProductName(productName);
     setProductSuggestionsOpen(true);
+  };
+
+  const handleSearch = useCallback(async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchSuggestions([]);
+      setSearchOpen(false);
+      return;
+    }
+    try {
+      const res = await api.get(
+        `/matches/search?prefix=${encodeURIComponent(q)}`,
+      );
+      const noms = (res.data ?? []).map((p: any) => p.nom);
+      setSearchSuggestions(noms);
+      setSearchOpen(noms.length > 0);
+    } catch {}
+  }, []);
+
+  const filterBySearch = (items: any[]) => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.toLowerCase();
+    return items.filter(
+      (item) =>
+        item.product?.nom?.toLowerCase().includes(q) ||
+        item.product?.categorie?.toLowerCase().includes(q) ||
+        item.region?.toLowerCase().includes(q),
+    );
   };
 
   const getDisplayUser = () => {
@@ -545,22 +635,21 @@ export default function Dashboard() {
           <div>
             <span className="text-xl font-bold block">Tantsaha</span>
             <span className="text-xs text-muted-foreground">
-              Marketplace Agricole
+              Plateforme agricole
             </span>
           </div>
         </div>
 
-        <div className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <div className="flex-1 p-4 space-y-1 overflow-y-auto">
           <Button
             variant={activeTab === "home" ? "default" : "ghost"}
             className="w-full justify-start gap-3 hover:bg-primary/10"
             onClick={() => setActiveTab("home")}
           >
             <Home className="w-5 h-5" />
-            Tableau de bord
+            Accueil
           </Button>
 
-          {/* Mes offres/demandes */}
           <div
             onMouseEnter={() => setDropdowns((p) => ({ ...p, primary: true }))}
             onMouseLeave={() => setDropdowns((p) => ({ ...p, primary: false }))}
@@ -574,11 +663,11 @@ export default function Dashboard() {
               className="w-full justify-start gap-3 hover:bg-primary/10"
             >
               {isProd ? (
-                <ShoppingBag className="w-5 h-5" />
+                <Leaf className="w-5 h-5" />
               ) : (
-                <Truck className="w-5 h-5" />
+                <ShoppingBag className="w-5 h-5" />
               )}
-              <span className="flex-1 text-left">Mes {primaryLabel}</span>
+              <span className="flex-1 text-left">{labels.mySection}</span>
               <ChevronDown
                 className={`w-4 h-4 transition-transform ${dropdowns.primary ? "rotate-180" : ""}`}
               />
@@ -587,25 +676,24 @@ export default function Dashboard() {
               <div className="pl-4 py-1 space-y-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "my-primary" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3"
+                  className="w-full justify-start gap-3 text-sm"
                   onClick={() => setActiveTab("my-primary")}
                 >
                   <Package className="w-4 h-4" />
-                  Gérer mes {primaryLabel.toLowerCase()}
+                  {isProd ? "Gérer mes récoltes" : "Gérer mes recherches"}
                 </Button>
                 <Button
                   variant={activeTab === "all-primary" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3"
+                  className="w-full justify-start gap-3 text-sm"
                   onClick={() => setActiveTab("all-primary")}
                 >
-                  <TrendingUp className="w-4 h-4" />
-                  Analyser le marché
+                  <BarChart3 className="w-4 h-4" />
+                  Analyse du marché
                 </Button>
               </div>
             )}
           </div>
 
-          {/* Marketplace */}
           <div
             onMouseEnter={() => setDropdowns((p) => ({ ...p, market: true }))}
             onMouseLeave={() => setDropdowns((p) => ({ ...p, market: false }))}
@@ -615,7 +703,7 @@ export default function Dashboard() {
               className="w-full justify-start gap-3 hover:bg-primary/10"
             >
               <Store className="w-5 h-5" />
-              <span className="flex-1 text-left">Marketplace</span>
+              <span className="flex-1 text-left">{labels.marketplace}</span>
               <ChevronDown
                 className={`w-4 h-4 transition-transform ${dropdowns.market ? "rotate-180" : ""}`}
               />
@@ -624,11 +712,11 @@ export default function Dashboard() {
               <div className="pl-4 py-1 animate-in slide-in-from-top-2">
                 <Button
                   variant={activeTab === "marketplace" ? "default" : "ghost"}
-                  className="w-full justify-start gap-3"
+                  className="w-full justify-start gap-3 text-sm"
                   onClick={() => setActiveTab("marketplace")}
                 >
                   <Flame className="w-4 h-4" />
-                  {isProd ? "Opportunités d'achat" : "Opportunités de vente"}
+                  {isProd ? "Demandes en cours" : "Récoltes disponibles"}
                 </Button>
               </div>
             )}
@@ -636,21 +724,44 @@ export default function Dashboard() {
 
           <div className="pt-2 border-t space-y-1">
             <Button
-              variant={activeTab === "matching" ? "default" : "ghost"}
+              variant={activeTab === "suggestions" ? "default" : "ghost"}
               className="w-full justify-start gap-3 hover:bg-primary/10"
-              onClick={() => setActiveTab("matching")}
+              onClick={() => setActiveTab("suggestions")}
             >
-              <Target className="w-5 h-5" />
-              Suggestions pour vous
+              <Sparkles className="w-5 h-5" />
+              <span className="flex-1 text-left">{labels.suggestions}</span>
+              {statsData.total_matches > 0 && (
+                <span className="w-5 h-5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {statsData.total_matches > 9 ? "9+" : statsData.total_matches}
+                </span>
+              )}
             </Button>
+
             <Button
               variant={activeTab === "negociations" ? "default" : "ghost"}
               className="w-full justify-start gap-3 hover:bg-primary/10"
               onClick={() => setActiveTab("negociations")}
             >
               <MessageCircle className="w-5 h-5" />
-              Mes négociations
+              Négociations
             </Button>
+
+            <Button
+              variant={activeTab === "commandes" ? "default" : "ghost"}
+              className="w-full justify-start gap-3 hover:bg-primary/10"
+              onClick={() => setActiveTab("commandes")}
+            >
+              <ShoppingCart className="w-5 h-5" />
+              <span className="flex-1 text-left">
+                {isProd ? "Commandes reçues" : "Mes commandes"}
+              </span>
+              {statsData.commandes_pending > 0 && (
+                <span className="w-5 h-5 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {statsData.commandes_pending}
+                </span>
+              )}
+            </Button>
+
             <Button
               variant={activeTab === "route" ? "default" : "ghost"}
               className="w-full justify-start gap-3 hover:bg-primary/10"
@@ -663,7 +774,7 @@ export default function Dashboard() {
         </div>
 
         <div className="p-4 border-t bg-muted/30">
-          <div className="bg-card rounded-lg p-3 mb-3 shadow-sm border">
+          <div className="bg-card rounded-xl p-3 mb-3 shadow-sm border">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground font-semibold shadow">
                 {user.prenom?.[0]}
@@ -674,8 +785,12 @@ export default function Dashboard() {
                   {user.prenom} {user.nom}
                 </p>
                 <p className="text-xs text-muted-foreground capitalize flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  {user.role === "producteur" ? "Producteur" : "Acheteur"}
+                  {isProd ? (
+                    <Leaf className="w-3 h-3" />
+                  ) : (
+                    <ShoppingBag className="w-3 h-3" />
+                  )}
+                  {isProd ? "Producteur agricole" : "Acheteur professionnel"}
                 </p>
               </div>
             </div>
@@ -694,18 +809,22 @@ export default function Dashboard() {
       {/* ── Contenu principal ── */}
       <div className="flex-1 overflow-auto">
         <header className="h-16 border-b bg-card/95 backdrop-blur-sm px-8 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            {activeTab === "home" && "Tableau de bord"}
-            {activeTab === "my-primary" && `Mes ${primaryLabel}`}
+          <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+            {activeTab === "home" && `Bonjour, ${user.prenom} 👋`}
+            {activeTab === "my-primary" &&
+              (isProd ? "Mes récoltes" : "Mes recherches")}
             {activeTab === "all-primary" && "Analyse du marché"}
-            {activeTab === "marketplace" &&
-              (isProd ? "Opportunités d'achat" : "Opportunités de vente")}
-            {activeTab === "matching" && "Suggestions pour vous"}
-            {activeTab === "negociations" && "Mes négociations"}
+            {activeTab === "marketplace" && labels.marketplace}
+            {activeTab === "suggestions" && labels.suggestions}
+            {activeTab === "negociations" && "Négociations en cours"}
+            {activeTab === "commandes" &&
+              (isProd ? "Commandes reçues" : "Mes commandes")}
             {activeTab === "route" && "Optimisation de tournée"}
           </h1>
           <div className="flex items-center gap-2">
-            <NotificationBell onMatchClick={() => setActiveTab("matching")} />
+            <NotificationBell
+              onMatchClick={() => setActiveTab("suggestions")}
+            />
             <Button
               size="sm"
               variant="outline"
@@ -728,179 +847,220 @@ export default function Dashboard() {
         <main className="p-8">
           {/* ── HOME ── */}
           {activeTab === "home" && (
-            <div className="max-w-6xl mx-auto">
-              <div className="text-center py-12 mb-12 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl p-8">
-                <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-primary/10 rounded-full">
-                  <Handshake className="w-5 h-5 text-primary" />
-                  <span className="text-sm font-medium text-primary">
-                    La plateforme agricole qui connecte les producteurs et les
-                    acheteurs de Madagascar
-                  </span>
+            <div className="max-w-5xl mx-auto space-y-8">
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-primary/70 p-8 text-primary-foreground">
+                <div className="absolute inset-0 opacity-10">
+                  <div className="absolute top-4 right-8 w-32 h-32 rounded-full bg-white" />
+                  <div className="absolute -bottom-8 -left-8 w-48 h-48 rounded-full bg-white" />
                 </div>
-                <h2 className="text-4xl font-bold mb-4">
-                  Bienvenue, {user.prenom} ! 👋
-                </h2>
-                <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                  {isProd
-                    ? "Vendez vos récoltes au juste prix, directement aux acheteurs de votre région. Fini les intermédiaires."
-                    : "Trouvez des producteurs locaux fiables, négociez directement et approvisionnez-vous au meilleur prix."}
-                </p>
+                <div className="relative">
+                  <div className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 bg-white/20 rounded-full text-sm font-medium">
+                    <Sprout className="w-4 h-4" />
+                    {isProd ? "Espace producteur" : "Espace acheteur"}
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    {isProd
+                      ? "Vendez vos récoltes au juste prix"
+                      : "Approvisionnez-vous auprès des meilleurs producteurs"}
+                  </h2>
+                  <p className="text-primary-foreground/80 text-sm max-w-lg">
+                    {isProd
+                      ? "Publiez vos récoltes, trouvez des acheteurs locaux fiables et négociez directement — sans intermédiaires."
+                      : "Trouvez des producteurs locaux, comparez les prix et commandez directement à la source."}
+                  </p>
+                  <div className="flex gap-3 mt-5">
+                    <Button
+                      className="bg-white text-primary hover:bg-white/90 gap-2 font-semibold shadow-sm"
+                      onClick={handleCreate}
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      {labels.newItem}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-white/40 text-white hover:bg-white/10 gap-2"
+                      onClick={() => setActiveTab("marketplace")}
+                    >
+                      {labels.marketplace}
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-6 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card
-                  className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
+                  className="hover:shadow-md transition-all cursor-pointer hover:border-primary/30"
                   onClick={() => setActiveTab("my-primary")}
                 >
-                  <CardContent className="pt-6 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      {isProd ? (
-                        <ShoppingBag className="w-8 h-8 text-white" />
-                      ) : (
-                        <Truck className="w-8 h-8 text-white" />
-                      )}
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Package className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
-                    <h3 className="font-bold text-lg mb-2">
-                      Mes {primaryLabel}
-                    </h3>
-                    <p className="text-4xl font-bold text-primary mb-2">
-                      {myItems.length}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {isProd ? "Produits en vente" : "Demandes actives"}
+                    <p className="text-2xl font-bold">{myItems.length}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {labels.itemsLabel}
                     </p>
                   </CardContent>
                 </Card>
 
                 <Card
-                  className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
-                  onClick={() => setActiveTab("matching")}
+                  className="hover:shadow-md transition-all cursor-pointer hover:border-violet-300"
+                  onClick={() => setActiveTab("suggestions")}
                 >
-                  <CardContent className="pt-6 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Sparkles className="w-8 h-8 text-white" />
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center">
+                        <Sparkles className="w-4.5 h-4.5 text-violet-600" />
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
-                    <h3 className="font-bold text-lg mb-2">
-                      Suggestions pour vous
-                    </h3>
-                    <p className="text-4xl font-bold text-violet-600 mb-2">
+                    <p className="text-2xl font-bold text-violet-600">
                       {statsData.total_matches}
                     </p>
-                    <p className="text-sm text-muted-foreground">
-                      Correspondances trouvées
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {isProd ? "Acheteurs potentiels" : "Producteurs suggérés"}
                     </p>
                   </CardContent>
                 </Card>
 
                 <Card
-                  className="hover:shadow-xl transition-all cursor-pointer border-2 hover:border-primary/50 group"
-                  onClick={() => setActiveTab("marketplace")}
+                  className="hover:shadow-md transition-all cursor-pointer hover:border-blue-300"
+                  onClick={() => setActiveTab("negociations")}
                 >
-                  <CardContent className="pt-6 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Flame className="w-8 h-8 text-white" />
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <MessageCircle className="w-4.5 h-4.5 text-blue-600" />
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
-                    <h3 className="font-bold text-lg mb-2">
-                      Opportunités en direct
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-3">
+                    <p className="text-2xl font-bold text-blue-600">
+                      {statsData.negociations}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Négociation(s) en cours
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className={`hover:shadow-md transition-all cursor-pointer ${statsData.commandes_pending > 0 ? "border-amber-300 bg-amber-50/50" : "hover:border-amber-300"}`}
+                  onClick={() => setActiveTab("commandes")}
+                >
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center">
+                        <ShoppingCart className="w-4.5 h-4.5 text-amber-600" />
+                      </div>
+                      {statsData.commandes_pending > 0 && (
+                        <Badge className="text-[10px] bg-amber-500 text-white border-0 px-1.5">
+                          {statsData.commandes_pending} urgent
+                          {statsData.commandes_pending > 1 ? "es" : "e"}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-2xl font-bold text-amber-600">
+                      {statsData.commandes_pending}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {isProd
-                        ? "Des acheteurs cherchent vos produits en ce moment"
-                        : "Des producteurs locaux proposent leurs récoltes"}
+                        ? "Commande(s) à confirmer"
+                        : "Commande(s) en attente"}
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
-              <div className="grid md:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                        <Package className="w-5 h-5 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{myItems.length}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Publications actives
-                        </p>
-                      </div>
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+                  Actions rapides
+                </h3>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <button
+                    onClick={handleCreate}
+                    className="group flex items-center gap-4 p-4 bg-card border rounded-xl hover:border-primary/40 hover:shadow-md transition-all text-left"
+                  >
+                    <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors flex-shrink-0">
+                      <PlusCircle className="w-5 h-5 text-primary group-hover:text-white" />
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center">
-                        <Sparkles className="w-5 h-5 text-violet-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">
-                          {statsData.total_matches}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Correspondances
-                        </p>
-                      </div>
+                    <div>
+                      <p className="font-semibold text-sm">{labels.newItem}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {isProd
+                          ? "Atteignez des acheteurs locaux"
+                          : "Trouvez des producteurs près de vous"}
+                      </p>
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Users className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">
-                          {statsData.contacts_etablis}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Contacts établis
-                        </p>
-                      </div>
+                    <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto group-hover:text-primary transition-colors flex-shrink-0" />
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("marketplace")}
+                    className="group flex items-center gap-4 p-4 bg-card border rounded-xl hover:border-orange-300 hover:shadow-md transition-all text-left"
+                  >
+                    <div className="w-11 h-11 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-500 transition-colors flex-shrink-0">
+                      <Store className="w-5 h-5 text-orange-600 group-hover:text-white" />
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                        <Handshake className="w-5 h-5 text-orange-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">
-                          {statsData.negociations}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Négociations en cours
-                        </p>
-                      </div>
+                    <div>
+                      <p className="font-semibold text-sm">
+                        {labels.marketplace}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {isProd
+                          ? "Consultez les demandes d'achat"
+                          : "Parcourez les récoltes disponibles"}
+                      </p>
                     </div>
-                  </CardContent>
-                </Card>
+                    <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto group-hover:text-orange-500 transition-colors flex-shrink-0" />
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("suggestions")}
+                    className="group flex items-center gap-4 p-4 bg-card border rounded-xl hover:border-violet-300 hover:shadow-md transition-all text-left"
+                  >
+                    <div className="w-11 h-11 bg-violet-100 rounded-xl flex items-center justify-center group-hover:bg-violet-500 transition-colors flex-shrink-0">
+                      <Sparkles className="w-5 h-5 text-violet-600 group-hover:text-white" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">
+                        {labels.suggestions}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Correspondances calculées par notre algorithme
+                      </p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto group-hover:text-violet-500 transition-colors flex-shrink-0" />
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {/* ── MES ITEMS ── */}
+          {/* ── MES RÉCOLTES / MES RECHERCHES ── */}
           {activeTab === "my-primary" && (
             <Card className="shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-primary" />
-                    Mes {primaryLabel}
+                    {isProd ? (
+                      <Leaf className="w-5 h-5 text-primary" />
+                    ) : (
+                      <ShoppingBag className="w-5 h-5 text-primary" />
+                    )}
+                    {isProd ? "Mes récoltes" : "Mes recherches"}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {paginationData.my.total}{" "}
-                    {isProd ? "produit(s) en vente" : "demande(s) active(s)"}
+                    {paginationData.my.total} {labels.itemsLabel}
                     {" · "}cliquez sur une ligne pour voir les opportunités
                   </p>
                 </div>
                 <Button onClick={handleCreate} className="gap-2 shadow-sm">
                   <PlusCircle className="w-4 h-4" />
-                  {isProd ? "Nouvelle offre" : "Nouvelle demande"}
+                  {labels.newItem}
                 </Button>
               </CardHeader>
               <CardContent className="p-6">
@@ -911,28 +1071,30 @@ export default function Dashboard() {
                 ) : myItems.length === 0 ? (
                   <div className="text-center py-20">
                     <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
-                      <Package className="w-10 h-10 text-muted-foreground" />
+                      {isProd ? (
+                        <Leaf className="w-10 h-10 text-muted-foreground" />
+                      ) : (
+                        <ShoppingBag className="w-10 h-10 text-muted-foreground" />
+                      )}
                     </div>
                     <h3 className="text-xl font-semibold mb-2">
                       {isProd
-                        ? "Publiez votre première offre"
-                        : "Publiez votre première demande"}
+                        ? "Publiez votre première récolte"
+                        : "Publiez votre première recherche"}
                     </h3>
                     <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                       {isProd
-                        ? "Atteignez des centaines d'acheteurs locaux et vendez vos récoltes au juste prix."
-                        : "Décrivez vos besoins et laissez les producteurs venir à vous."}
+                        ? "Atteignez des centaines d'acheteurs locaux et vendez vos récoltes au juste prix, sans intermédiaires."
+                        : "Décrivez vos besoins et laissez les producteurs locaux venir à vous."}
                     </p>
                     <Button size="lg" onClick={handleCreate} className="gap-2">
                       <PlusCircle className="w-5 h-5" />
-                      {isProd
-                        ? "Créer ma première offre"
-                        : "Créer ma première demande"}
+                      {labels.newItem}
                     </Button>
                   </div>
                 ) : (
                   <>
-                    <div className="rounded-lg border overflow-hidden">
+                    <div className="rounded-xl border overflow-hidden">
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-muted/50">
@@ -943,13 +1105,13 @@ export default function Dashboard() {
                               Quantité
                             </TableHead>
                             <TableHead className="font-semibold">
-                              {isProd ? "Prix unitaire" : "Budget max"}
+                              {isProd ? "Prix / unité" : "Budget max"}
                             </TableHead>
                             <TableHead className="font-semibold">
                               Région
                             </TableHead>
                             <TableHead className="font-semibold">
-                              Deadline
+                              Statut
                             </TableHead>
                             <TableHead className="font-semibold">
                               Opportunités
@@ -961,36 +1123,41 @@ export default function Dashboard() {
                         </TableHeader>
                         <TableBody>
                           {[...myItems]
-                            .sort(
-                              (a, b) =>
-                                Number(isExpired(a)) - Number(isExpired(b)),
-                            )
+                            .sort((a, b) => {
+                              if (isEpuise(a) && !isEpuise(b)) return 1;
+                              if (!isEpuise(a) && isEpuise(b)) return -1;
+                              if (isExpired(a) && !isExpired(b)) return 1;
+                              if (!isExpired(a) && isExpired(b)) return -1;
+                              return 0;
+                            })
                             .map((item) => {
                               const expired = isExpired(item);
+                              const epuise = isEpuise(item);
+                              const inactive = expired || epuise;
                               return (
                                 <TableRow
                                   key={item.id}
                                   onClick={() => {
-                                    if (!expired)
+                                    if (!inactive)
                                       openProductSuggestions(
                                         item.product_id,
                                         item.product?.nom ?? "",
                                       );
                                   }}
-                                  className={`transition-colors ${expired ? "opacity-50 bg-muted/30 cursor-default" : "hover:bg-primary/5 cursor-pointer"}`}
+                                  className={`transition-colors ${inactive ? "opacity-50 bg-muted/20 cursor-default" : "hover:bg-primary/5 cursor-pointer"}`}
                                 >
                                   <TableCell>
                                     <div className="flex items-center gap-3">
                                       <div
-                                        className={`w-9 h-9 rounded-lg flex items-center justify-center ${expired ? "bg-muted" : "bg-primary/10"}`}
+                                        className={`w-9 h-9 rounded-lg flex items-center justify-center ${inactive ? "bg-muted" : "bg-primary/10"}`}
                                       >
                                         <Package
-                                          className={`w-4 h-4 ${expired ? "text-muted-foreground" : "text-primary"}`}
+                                          className={`w-4 h-4 ${inactive ? "text-muted-foreground" : "text-primary"}`}
                                         />
                                       </div>
                                       <div>
                                         <p
-                                          className={`font-medium text-sm ${expired ? "line-through text-muted-foreground" : ""}`}
+                                          className={`font-medium text-sm ${inactive ? "line-through text-muted-foreground" : ""}`}
                                         >
                                           {item.product?.nom ||
                                             `Produit #${item.product_id}`}
@@ -1004,14 +1171,25 @@ export default function Dashboard() {
                                     </div>
                                   </TableCell>
                                   <TableCell>
-                                    <span className="text-sm font-medium">
-                                      {Number(item.quantite)}{" "}
-                                      {item.product?.unite || "kg"}
-                                    </span>
+                                    <div>
+                                      <span className="text-sm font-medium">
+                                        {Number(item.quantite)}{" "}
+                                        {item.product?.unite || "kg"}
+                                      </span>
+                                      {isProd &&
+                                        item.quantite_restante !== null &&
+                                        item.quantite_restante !==
+                                          undefined && (
+                                          <p className="text-xs text-muted-foreground">
+                                            {Number(item.quantite_restante)}{" "}
+                                            restant(s)
+                                          </p>
+                                        )}
+                                    </div>
                                   </TableCell>
                                   <TableCell>
                                     <span
-                                      className={`text-sm font-semibold ${expired ? "text-muted-foreground" : "text-green-600"}`}
+                                      className={`text-sm font-semibold ${inactive ? "text-muted-foreground" : "text-green-600"}`}
                                     >
                                       {(isProd
                                         ? item.prix_unitaire
@@ -1035,7 +1213,7 @@ export default function Dashboard() {
                                     <DeadlineBadge item={item} />
                                   </TableCell>
                                   <TableCell>
-                                    {expired ? (
+                                    {inactive ? (
                                       <span className="text-xs text-muted-foreground">
                                         —
                                       </span>
@@ -1051,6 +1229,19 @@ export default function Dashboard() {
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <div className="flex justify-end gap-1.5">
+                                      {isProd && !epuise && (
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          onClick={() =>
+                                            handleMarkEpuise(item.id)
+                                          }
+                                          className="h-8 w-8 hover:bg-gray-50 hover:text-gray-600 hover:border-gray-300"
+                                          title="Marquer comme épuisé"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </Button>
+                                      )}
                                       <Button
                                         variant="outline"
                                         size="icon"
@@ -1097,16 +1288,23 @@ export default function Dashboard() {
                       onChange={handleSearch}
                       suggestions={searchSuggestions}
                       suggestionsOpen={searchOpen}
-                      onSelectSuggestion={handleSelectSuggestion}
-                      onClear={handleClearSearch}
+                      onSelectSuggestion={(s) => {
+                        setSearchQuery(s);
+                        setSearchOpen(false);
+                      }}
+                      onClear={() => {
+                        setSearchQuery("");
+                        setSearchSuggestions([]);
+                        setSearchOpen(false);
+                      }}
                       onFocus={() =>
                         searchSuggestions.length > 0 && setSearchOpen(true)
                       }
-                      placeholder={`Rechercher parmi les ${primaryLabel.toLowerCase()}...`}
+                      placeholder="Rechercher un produit, une région..."
                       searchRef={searchRef}
                     />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <TrendingUp className="w-4 h-4" />
+                      <BarChart3 className="w-4 h-4" />
                       <span>Analysez les prix du marché en temps réel</span>
                     </div>
                   </div>
@@ -1120,73 +1318,67 @@ export default function Dashboard() {
               ) : primaryItems.length === 0 ? (
                 <Card>
                   <CardContent className="py-20 text-center">
-                    <Eye className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
+                    <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
                       Aucune donnée disponible
                     </h3>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Les annonces des autres utilisateurs apparaîtront ici.
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
-                  <p className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    <span className="font-medium">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">
                       {filterBySearch(primaryItems).length}
                     </span>{" "}
-                    {primaryLabel.toLowerCase()} sur le marché
+                    annonce(s) sur le marché
                   </p>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
                     {filterBySearch(primaryItems).map((item) => (
                       <Card
                         key={item.id}
-                        className="hover:shadow-xl transition-all border-2 hover:border-primary/50 group"
+                        className="hover:shadow-lg transition-all border hover:border-primary/30 group"
                       >
-                        <CardContent className="p-6">
-                          <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-semibold text-lg">
+                        <CardContent className="p-5">
+                          <div className="flex items-start gap-3 mb-4 pb-3 border-b">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
                               {isProd
                                 ? item.producteur?.prenom?.[0]
                                 : item.acheteur?.prenom?.[0]}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold truncate">
+                              <p className="font-semibold text-sm truncate">
                                 {isProd
                                   ? `${item.producteur?.prenom} ${item.producteur?.nom}`
                                   : `${item.acheteur?.prenom} ${item.acheteur?.nom}`}
                               </p>
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                                 <MapPin className="w-3 h-3" />
                                 {item.region}
                               </div>
                             </div>
                           </div>
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                              <Package className="w-5 h-5 text-primary" />
-                              <h3 className="font-bold text-lg">
-                                {item.product?.nom ||
-                                  `Produit #${item.product_id}`}
-                              </h3>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-xs">
+                          <div className="space-y-2.5">
+                            <p className="font-bold">
+                              {item.product?.nom ||
+                                `Produit #${item.product_id}`}
+                            </p>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
                                   Quantité
                                 </span>
-                                <span className="font-semibold flex items-center gap-1">
-                                  <Scale className="w-3 h-3" />
+                                <span className="font-semibold">
                                   {Number(item.quantite)} {item.product?.unite}
                                 </span>
                               </div>
-                              <div className="flex flex-col gap-1">
-                                <span className="text-muted-foreground text-xs">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
                                   {isProd ? "Prix" : "Budget"}
                                 </span>
-                                <span className="font-semibold text-green-600 flex items-center gap-1">
-                                  <Banknote className="w-3 h-3" />
+                                <span className="font-semibold text-green-600">
                                   {(isProd
                                     ? item.prix_unitaire
                                     : item.budget_max
@@ -1196,9 +1388,8 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
-                          <div className="pt-4 border-t mt-4 flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                              <Calendar className="w-3 h-3" />
+                          <div className="pt-3 border-t mt-3 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">
                               {new Date(item.created_at).toLocaleDateString(
                                 "fr-FR",
                                 { day: "numeric", month: "short" },
@@ -1208,9 +1399,9 @@ export default function Dashboard() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleViewDetails(item.id)}
-                              className="gap-2 group-hover:bg-primary group-hover:text-white transition-colors"
+                              className="gap-1.5 text-xs group-hover:bg-primary group-hover:text-white transition-colors"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="w-3.5 h-3.5" />
                               Voir plus
                             </Button>
                           </div>
@@ -1231,7 +1422,9 @@ export default function Dashboard() {
           {/* ── MARKETPLACE ── */}
           {activeTab === "marketplace" && (
             <div className="space-y-6">
-              <Card className="shadow-sm bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
+              <Card
+                className={`shadow-sm ${isProd ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200" : "bg-gradient-to-r from-orange-50 to-red-50 border-orange-200"}`}
+              >
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-4">
                     <SearchBarWithTrie
@@ -1239,17 +1432,36 @@ export default function Dashboard() {
                       onChange={handleSearch}
                       suggestions={searchSuggestions}
                       suggestionsOpen={searchOpen}
-                      onSelectSuggestion={handleSelectSuggestion}
-                      onClear={handleClearSearch}
+                      onSelectSuggestion={(s) => {
+                        setSearchQuery(s);
+                        setSearchOpen(false);
+                      }}
+                      onClear={() => {
+                        setSearchQuery("");
+                        setSearchSuggestions([]);
+                        setSearchOpen(false);
+                      }}
                       onFocus={() =>
                         searchSuggestions.length > 0 && setSearchOpen(true)
                       }
-                      placeholder={`Trouvez ${isProd ? "des acheteurs pour vos produits" : "des producteurs près de chez vous"}...`}
+                      placeholder={
+                        isProd
+                          ? "Rechercher une demande d'achat..."
+                          : "Rechercher un produit local..."
+                      }
                       searchRef={searchRef}
                     />
-                    <div className="flex items-center gap-2 text-sm font-medium text-orange-700">
-                      <Flame className="w-4 h-4" />
-                      Opportunités en direct
+                    <div
+                      className={`flex items-center gap-2 text-sm font-medium ${isProd ? "text-blue-700" : "text-orange-700"}`}
+                    >
+                      {isProd ? (
+                        <Users className="w-4 h-4" />
+                      ) : (
+                        <Flame className="w-4 h-4" />
+                      )}
+                      {isProd
+                        ? "Demandes d'achat en direct"
+                        : "Récoltes disponibles maintenant"}
                     </div>
                   </div>
                 </CardContent>
@@ -1257,16 +1469,22 @@ export default function Dashboard() {
 
               {loading ? (
                 <div className="flex justify-center py-20">
-                  <OrganicSproutLoader text="Recherche des meilleures opportunités..." />
+                  <OrganicSproutLoader
+                    text={
+                      isProd
+                        ? "Recherche des acheteurs..."
+                        : "Recherche des producteurs..."
+                    }
+                  />
                 </div>
               ) : marketplaceItems.length === 0 ? (
                 <Card>
                   <CardContent className="py-20 text-center">
                     <Store className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
-                      Aucune opportunité pour le moment
+                      Aucune annonce disponible
                     </h3>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Revenez bientôt — de nouvelles annonces sont publiées
                       chaque jour.
                     </p>
@@ -1274,104 +1492,160 @@ export default function Dashboard() {
                 </Card>
               ) : (
                 <>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-orange-600" />
-                    <span className="text-orange-600">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">
                       {filterBySearch(marketplaceItems).length}
-                    </span>
-                    <span className="text-muted-foreground">
-                      opportunité(s) disponible(s)
-                    </span>
+                    </span>{" "}
+                    {isProd ? "demande(s) d'achat" : "récolte(s) disponible(s)"}
                   </p>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filterBySearch(marketplaceItems).map((item) => (
-                      <Card
-                        key={item.id}
-                        className="hover:shadow-xl transition-all border-2 hover:border-orange-400 group relative overflow-hidden"
-                      >
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 opacity-10 rounded-bl-full" />
-                        <CardContent className="p-6 relative">
-                          <div className="flex items-start gap-3 mb-4 pb-4 border-b">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white font-semibold text-lg shadow-md">
-                              {isProd
-                                ? item.acheteur?.prenom?.[0]
-                                : item.producteur?.prenom?.[0]}
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {filterBySearch(marketplaceItems).map((item) => {
+                      const contact = isProd ? item.acheteur : item.producteur;
+                      const isOfferItem = !isProd;
+                      return (
+                        <Card
+                          key={item.id}
+                          className={`hover:shadow-lg transition-all border-2 group relative overflow-hidden ${isProd ? "hover:border-blue-300" : "hover:border-orange-300"}`}
+                        >
+                          <div
+                            className={`absolute top-0 right-0 w-16 h-16 opacity-10 rounded-bl-full ${isProd ? "bg-blue-500" : "bg-orange-500"}`}
+                          />
+                          <CardContent className="p-5 relative">
+                            {/* Header */}
+                            <div className="flex items-start gap-3 mb-4 pb-3 border-b">
+                              <div
+                                className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm flex-shrink-0 ${isProd ? "bg-gradient-to-br from-blue-500 to-indigo-600" : "bg-gradient-to-br from-orange-400 to-red-500"}`}
+                              >
+                                {contact?.prenom?.[0]}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-sm truncate">
+                                  {contact
+                                    ? `${contact.prenom} ${contact.nom}`
+                                    : "—"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {isProd
+                                    ? "Acheteur vérifié"
+                                    : "Producteur local"}
+                                </p>
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                                  <MapPin className="w-3 h-3" />
+                                  {item.region}
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold truncate">
-                                {isProd
-                                  ? `${item.acheteur?.prenom} ${item.acheteur?.nom}`
-                                  : `${item.producteur?.prenom} ${item.producteur?.nom}`}
+
+                            {/* Produit */}
+                            <div className="mb-3">
+                              <p className="font-bold text-base">
+                                {item.product?.nom}
                               </p>
-                              <p className="text-xs text-muted-foreground capitalize">
-                                {isProd
-                                  ? "Acheteur vérifié"
-                                  : "Producteur local"}
-                              </p>
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
-                                <MapPin className="w-3 h-3" />
-                                {item.region}
+                              <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                                <div className="flex flex-col gap-0.5 p-2 bg-muted/50 rounded-lg">
+                                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                    Quantité
+                                  </span>
+                                  <span className="font-semibold flex items-center gap-1">
+                                    <Scale className="w-3 h-3" />
+                                    {Number(item.quantite)}{" "}
+                                    {item.product?.unite}
+                                  </span>
+                                </div>
+                                <div className="flex flex-col gap-0.5 p-2 bg-green-50 rounded-lg">
+                                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                    {isProd ? "Budget max" : "Prix / unité"}
+                                  </span>
+                                  <span className="font-bold text-green-600 flex items-center gap-1">
+                                    <Banknote className="w-3 h-3" />
+                                    {(isProd
+                                      ? item.budget_max
+                                      : item.prix_unitaire
+                                    )?.toLocaleString()}{" "}
+                                    Ar
+                                  </span>
+                                </div>
+                              </div>
+                              {isOfferItem &&
+                                item.quantite_restante !== null &&
+                                item.quantite_restante !== undefined && (
+                                  <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                                    <Scale className="w-3 h-3" />
+                                    {Number(item.quantite_restante)}{" "}
+                                    {item.product?.unite} encore disponibles
+                                  </p>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="pt-3 border-t flex items-center justify-between gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(item.created_at).toLocaleDateString(
+                                  "fr-FR",
+                                  { day: "numeric", month: "short" },
+                                )}
+                              </span>
+                              <div className="flex gap-1.5">
+                                {/* Acheteur voit des offres → Commander */}
+                                {!isProd && (
+                                  <Button
+                                    size="sm"
+                                    className="gap-1.5 text-xs h-8 bg-gradient-to-r from-primary to-primary/80"
+                                    onClick={() => handleCheckout(item)}
+                                    disabled={item.statut === "epuise"}
+                                  >
+                                    {item.statut === "epuise" ? (
+                                      "Épuisé"
+                                    ) : (
+                                      <>
+                                        <ShoppingCart className="w-3.5 h-3.5" />
+                                        Commander
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+
+                                {/* Producteur voit des demandes → Proposer mon offre */}
+                                {isProd && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs h-8 border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
+                                    onClick={() =>
+                                      openProductSuggestions(
+                                        item.product_id,
+                                        item.product?.nom ?? "",
+                                      )
+                                    }
+                                  >
+                                    <Star className="w-3.5 h-3.5" />
+                                    Proposer mon offre
+                                  </Button>
+                                )}
+
+                                {/* Négocier pour tous */}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 text-xs h-8"
+                                  onClick={() =>
+                                    handleNegocierMarketplace(item)
+                                  }
+                                  disabled={marketNegociatLoading === item.id}
+                                >
+                                  {marketNegociatLoading === item.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                  )}
+                                  Négocier
+                                </Button>
                               </div>
                             </div>
-                          </div>
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                              <Package className="w-5 h-5 text-orange-600" />
-                              <h3 className="font-bold text-lg">
-                                {item.product?.nom ||
-                                  `Produit #${item.product_id}`}
-                              </h3>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div className="flex flex-col gap-1 p-2 rounded-lg bg-muted/50">
-                                <span className="text-muted-foreground text-xs">
-                                  Quantité
-                                </span>
-                                <span className="font-semibold flex items-center gap-1">
-                                  <Scale className="w-3 h-3" />
-                                  {Number(item.quantite)} {item.product?.unite}
-                                </span>
-                              </div>
-                              <div className="flex flex-col gap-1 p-2 rounded-lg bg-green-50">
-                                <span className="text-muted-foreground text-xs">
-                                  {isProd ? "Budget" : "Prix"}
-                                </span>
-                                <span className="font-bold text-green-600 flex items-center gap-1">
-                                  <Banknote className="w-3 h-3" />
-                                  {(isProd
-                                    ? item.budget_max
-                                    : item.prix_unitaire
-                                  )?.toLocaleString()}{" "}
-                                  Ar
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="pt-4 border-t mt-4 flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(item.created_at).toLocaleDateString(
-                                "fr-FR",
-                                { day: "numeric", month: "short" },
-                              )}
-                            </span>
-                            <Button
-                              size="sm"
-                              className="gap-1.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-sm"
-                              onClick={() =>
-                                openProductSuggestions(
-                                  item.product_id,
-                                  item.product?.nom ?? "",
-                                )
-                              }
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              Voir les opportunités
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                   <StandardPagination
                     page={paginationData.market.page}
@@ -1384,10 +1658,13 @@ export default function Dashboard() {
           )}
 
           {/* ── SUGGESTIONS ── */}
-          {activeTab === "matching" && <SuggestionsTab user={user} />}
+          {activeTab === "suggestions" && <SuggestionsTab user={user} />}
 
           {/* ── NÉGOCIATIONS ── */}
           {activeTab === "negociations" && <NegociationsPanel user={user} />}
+
+          {/* ── COMMANDES ── */}
+          {activeTab === "commandes" && <CommandesPage user={user} />}
 
           {/* ── ROUTE ── */}
           {activeTab === "route" && (
@@ -1399,12 +1676,12 @@ export default function Dashboard() {
                 <h3 className="text-2xl font-bold mb-3">
                   Optimisation de tournée
                 </h3>
-                <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                <p className="text-muted-foreground max-w-md mx-auto mb-4 text-sm">
                   Planifiez vos tournées de {isProd ? "livraison" : "collecte"}{" "}
-                  de manière optimale pour économiser du temps et du carburant.
+                  de manière optimale. Notre algorithme calcule le chemin le
+                  plus court pour visiter plusieurs points en une seule sortie.
                 </p>
-                <Badge variant="secondary" className="px-4 py-2">
-                  <Flame className="w-4 h-4 mr-2" />
+                <Badge variant="secondary" className="px-4 py-1.5 text-sm">
                   Disponible prochainement
                 </Badge>
               </CardContent>
@@ -1415,14 +1692,13 @@ export default function Dashboard() {
 
       {/* ── Dialog Détails ── */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Package className="w-6 h-6 text-primary" />
-              {selectedItem?.product?.nom || "Détails de l'annonce"}
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-primary" />
+              {selectedItem?.product?.nom || "Détails"}
             </DialogTitle>
-            <DialogDescription className="flex items-center gap-2">
-              <Calendar className="w-4 h-4" />
+            <DialogDescription>
               Publié le{" "}
               {selectedItem &&
                 new Date(selectedItem.created_at).toLocaleDateString("fr-FR", {
@@ -1434,50 +1710,54 @@ export default function Dashboard() {
           </DialogHeader>
 
           {selectedItem && displayUser && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-xl border border-primary/20">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-semibold text-2xl shadow-lg">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-semibold text-xl shadow-md">
                   {displayUser.prenom?.[0]}
                   {displayUser.nom?.[0]}
                 </div>
                 <div className="flex-1">
-                  <p className="font-bold text-lg">
+                  <p className="font-bold">
                     {displayUser.prenom} {displayUser.nom}
                   </p>
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-                    <MapPin className="w-4 h-4" />
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3" />
                     {selectedItem.region}
-                  </div>
-                  {displayUser.telephone && (
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-primary mt-0.5">
-                      <Phone className="w-4 h-4" />
-                      {displayUser.telephone}
-                    </div>
-                  )}
-                </div>
-                <Badge variant="secondary">Membre vérifié</Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-4 border rounded-xl bg-gradient-to-br from-background to-muted/20">
-                  <p className="text-xs text-muted-foreground mb-1">Produit</p>
-                  <p className="font-bold text-lg">
-                    {selectedItem.product?.nom}
                   </p>
-                  {selectedItem.product?.categorie && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {selectedItem.product.categorie}
+                  {displayUser.telephone && (
+                    <p className="text-xs font-semibold text-primary flex items-center gap-1 mt-0.5">
+                      <Phone className="w-3 h-3" />
+                      {displayUser.telephone}
                     </p>
                   )}
                 </div>
-                <div className="p-4 border rounded-xl bg-gradient-to-br from-background to-muted/20">
-                  <p className="text-xs text-muted-foreground mb-1">Quantité</p>
-                  <p className="font-bold text-lg">
-                    {selectedItem.quantite} {selectedItem.product?.unite}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 border rounded-xl">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                    Produit
+                  </p>
+                  <p className="font-bold">{selectedItem.product?.nom}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedItem.product?.categorie}
                   </p>
                 </div>
-                <div className="p-4 border rounded-xl bg-gradient-to-br from-green-50 to-green-100/20 col-span-2">
-                  <p className="text-xs text-muted-foreground mb-1">
+                <div className="p-3 border rounded-xl">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                    Quantité
+                  </p>
+                  <p className="font-bold">
+                    {selectedItem.quantite} {selectedItem.product?.unite}
+                  </p>
+                  {selectedItem.quantite_restante && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedItem.quantite_restante} restant(s)
+                    </p>
+                  )}
+                </div>
+                <div className="p-3 border rounded-xl col-span-2 bg-green-50">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
                     {activeTab === "marketplace"
                       ? isProd
                         ? "Budget maximum"
@@ -1486,7 +1766,7 @@ export default function Dashboard() {
                         ? "Prix unitaire"
                         : "Budget maximum"}
                   </p>
-                  <p className="font-bold text-2xl text-green-600">
+                  <p className="font-bold text-xl text-green-600">
                     {(activeTab === "marketplace"
                       ? isProd
                         ? selectedItem.budget_max
@@ -1495,16 +1775,27 @@ export default function Dashboard() {
                         ? selectedItem.prix_unitaire
                         : selectedItem.budget_max
                     )?.toLocaleString()}{" "}
-                    <span className="text-base font-normal">Ar</span>
+                    <span className="text-sm font-normal">
+                      Ar / {selectedItem.product?.unite}
+                    </span>
                   </p>
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                {displayUser.telephone && (
+              <div className="flex gap-2">
+                {!isProd && selectedItem.statut !== "epuise" && (
                   <Button
                     className="flex-1 gap-2"
-                    size="lg"
+                    onClick={() => handleCheckout(selectedItem)}
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    Commander maintenant
+                  </Button>
+                )}
+                {displayUser.telephone && (
+                  <Button
+                    variant="outline"
+                    className="gap-2 flex-1"
                     onClick={() => window.open(`tel:${displayUser.telephone}`)}
                   >
                     <Phone className="w-4 h-4" />
@@ -1513,8 +1804,7 @@ export default function Dashboard() {
                 )}
                 <Button
                   variant="outline"
-                  className="flex-1 gap-2"
-                  size="lg"
+                  className="gap-2"
                   onClick={() => {
                     setDetailsOpen(false);
                     openProductSuggestions(
@@ -1524,7 +1814,6 @@ export default function Dashboard() {
                   }}
                 >
                   <Sparkles className="w-4 h-4" />
-                  Voir les opportunités
                 </Button>
               </div>
             </div>
@@ -1545,7 +1834,7 @@ export default function Dashboard() {
         }}
       />
 
-      {/* ── NegociationChat ── */}
+      {/* ── NegociationChat (depuis suggestions) ── */}
       <NegociationChat
         open={negociationOpen}
         onClose={() => setNegociationOpen(false)}
@@ -1556,6 +1845,44 @@ export default function Dashboard() {
         contactTelephone={negociationData?.contact_telephone}
         matchStatut={negociationData?.match_statut}
       />
+
+      {/* ── NegociationChat (depuis marketplace) ── */}
+      <NegociationChat
+        open={marketNegociatOpen}
+        onClose={() => {
+          setMarketNegociatOpen(false);
+          setMarketNegociatData(null);
+        }}
+        matchId={marketNegociatData?.match_id ?? null}
+        contactNom={marketNegociatData?.contact_nom ?? ""}
+        productName={marketNegociatData?.product_name ?? ""}
+        productUnite={marketNegociatData?.product_unite}
+        contactTelephone={marketNegociatData?.contact_telephone}
+        matchStatut={marketNegociatData?.match_statut}
+        isAcheteur={!isProd}
+        offerId={marketNegociatData?.offer_id}
+        offerPrixUnitaire={marketNegociatData?.offer_prix_unitaire}
+        offerQuantite={marketNegociatData?.offer_quantite}
+        offerQuantiteRestante={marketNegociatData?.offer_quantite_restante}
+        producteurNom={marketNegociatData?.producteur_nom}
+        producteurRegion={marketNegociatData?.producteur_region}
+      />
+
+      {/* ── CheckoutDialog ── */}
+      {checkoutOffer && (
+        <CheckoutDialog
+          open={checkoutOpen}
+          onClose={() => {
+            setCheckoutOpen(false);
+            setCheckoutOffer(null);
+          }}
+          offer={checkoutOffer}
+          onSuccess={() => {
+            loadStats();
+            loadMarketplaceItems(1);
+          }}
+        />
+      )}
 
       {/* ── CrudDialog ── */}
       <CrudDialog

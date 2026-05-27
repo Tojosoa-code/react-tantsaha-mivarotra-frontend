@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import api from "@/lib/axios";
 import {
@@ -25,7 +24,6 @@ import {
   AlertCircle,
   User,
 } from "lucide-react";
-import { Decimal } from "decimal.js";
 
 interface CheckoutProps {
   open: boolean;
@@ -99,7 +97,7 @@ export default function CheckoutDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[80vw] max-w-[80vw] max-h-[90vh] overflow-y-auto">
         {/* ── Étape 1 : Quantité ── */}
         {step === "quantite" && (
           <>
