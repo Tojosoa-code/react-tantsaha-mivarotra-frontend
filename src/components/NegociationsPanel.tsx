@@ -11,6 +11,8 @@ import {
   Loader2,
   Sparkles,
   ChevronRight,
+  Handshake,
+  PartyPopper,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,6 +27,16 @@ interface Conversation {
   last_message_at?: string;
   unread_count: number;
   score: number;
+  // Nouvelles données
+  offer_id: number;
+  demand_id: number;
+  offer_prix_unitaire: number;
+  offer_quantite: number;
+  offer_quantite_restante?: number;
+  demand_quantite: number;
+  is_acheteur: boolean;
+  producteur_nom?: string;
+  producteur_region?: string;
 }
 
 function statutIcon(statut: string) {
@@ -33,6 +45,10 @@ function statutIcon(statut: string) {
       return <Heart className="w-3.5 h-3.5 text-blue-500" />;
     case "negotiating":
       return <MessageCircle className="w-3.5 h-3.5 text-violet-500" />;
+    case "accord_propose":
+      return <Handshake className="w-3.5 h-3.5 text-amber-500" />;
+    case "accord_accepte":
+      return <PartyPopper className="w-3.5 h-3.5 text-emerald-500" />;
     case "done":
       return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
     default:
@@ -46,10 +62,31 @@ function statutLabel(statut: string) {
       return "Intérêt exprimé";
     case "negotiating":
       return "Négociation en cours";
+    case "accord_propose":
+      return "Accord proposé — En attente";
+    case "accord_accepte":
+      return "Accord accepté ✓";
     case "done":
       return "Accord conclu";
     default:
       return "Nouveau contact";
+  }
+}
+
+function statutBadgeColor(statut: string) {
+  switch (statut) {
+    case "interested":
+      return "bg-blue-50 text-blue-600 border-blue-200";
+    case "negotiating":
+      return "bg-violet-50 text-violet-600 border-violet-200";
+    case "accord_propose":
+      return "bg-amber-50 text-amber-600 border-amber-200";
+    case "accord_accepte":
+      return "bg-emerald-50 text-emerald-600 border-emerald-200";
+    case "done":
+      return "bg-emerald-50 text-emerald-600 border-emerald-200";
+    default:
+      return "bg-primary/10 text-primary border-primary/20";
   }
 }
 
@@ -147,7 +184,7 @@ export default function NegociationsPanel({
             onClick={() => setActiveChat(conv)}
             className={`group flex items-center gap-3 p-4 bg-card border rounded-xl cursor-pointer hover:border-primary/30 hover:shadow-md transition-all duration-200 ${
               conv.unread_count > 0 ? "border-primary/20 bg-primary/5" : ""
-            }`}
+            } ${conv.match_statut === "accord_propose" ? "border-amber-200 bg-amber-50/40" : ""}`}
           >
             {/* Avatar */}
             <div className="relative flex-shrink-0">
@@ -175,7 +212,9 @@ export default function NegociationsPanel({
                   {conv.product_name}
                 </span>
                 <span className="text-[10px] text-muted-foreground">·</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full border ${statutBadgeColor(conv.match_statut)}`}
+                >
                   {statutLabel(conv.match_statut)}
                 </span>
               </div>
@@ -216,6 +255,15 @@ export default function NegociationsPanel({
         productUnite={activeChat?.product_unite}
         contactTelephone={activeChat?.contact_telephone}
         matchStatut={activeChat?.match_statut}
+        offerId={activeChat?.offer_id}
+        offerPrixUnitaire={activeChat?.offer_prix_unitaire}
+        offerQuantite={activeChat?.offer_quantite}
+        offerQuantiteRestante={activeChat?.offer_quantite_restante}
+        demandQuantite={activeChat?.demand_quantite}
+        isAcheteur={activeChat?.is_acheteur ?? false}
+        producteurNom={activeChat?.producteur_nom}
+        producteurRegion={activeChat?.producteur_region}
+        onAccordAccepte={fetchConversations}
       />
     </div>
   );

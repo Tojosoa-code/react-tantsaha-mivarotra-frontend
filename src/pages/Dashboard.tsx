@@ -333,8 +333,9 @@ export default function Dashboard() {
     if (activeTab === "my-primary") loadMyItems(paginationData.my.page);
     if (activeTab === "all-primary")
       loadPrimaryItems(paginationData.primary.page);
-    if (activeTab === "marketplace")
-      loadMarketplaceItems(paginationData.market.page);
+    if (activeTab === "marketplace" && isProd && myItems.length === 0)
+      loadMyItems(1);
+    loadMarketplaceItems(paginationData.market.page);
   }, [activeTab, paginationData]);
 
   useEffect(() => {
@@ -642,6 +643,16 @@ export default function Dashboard() {
         item.product?.nom?.toLowerCase().includes(q) ||
         item.product?.categorie?.toLowerCase().includes(q) ||
         item.region?.toLowerCase().includes(q),
+    );
+  };
+
+  // Vérifie si le producteur a une offre active pour ce product_id
+  const prodHasOfferFor = (productId: number): any | null => {
+    if (!isProd) return true; // acheteur → toujours autorisé
+    return (
+      myItems.find(
+        (o: any) => o.product_id === productId && o.statut !== "epuise",
+      ) ?? null
     );
   };
 
@@ -1797,40 +1808,71 @@ export default function Dashboard() {
                                 )}
 
                                 {/* Producteur voit des demandes → Proposer mon offre */}
-                                {isProd && (
+                                {isProd ? (
+                                  (() => {
+                                    const myOffer = prodHasOfferFor(
+                                      item.product_id ?? item.product?.id,
+                                    );
+                                    return myOffer ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="gap-1.5 text-xs h-8 border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
+                                          onClick={() =>
+                                            openProductSuggestions(
+                                              item.product_id,
+                                              item.product?.nom ?? "",
+                                            )
+                                          }
+                                        >
+                                          <Star className="w-3.5 h-3.5" />
+                                          Proposer mon offre
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="gap-1.5 text-xs h-8"
+                                          onClick={() =>
+                                            handleNegocierMarketplace(item)
+                                          }
+                                          disabled={
+                                            marketNegociatLoading === item.id
+                                          }
+                                        >
+                                          {marketNegociatLoading === item.id ? (
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                          ) : (
+                                            <MessageCircle className="w-3.5 h-3.5" />
+                                          )}
+                                          Négocier
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 rounded-lg border border-dashed text-xs text-muted-foreground">
+                                        <Package className="w-3.5 h-3.5 flex-shrink-0" />
+                                        Vous n'avez pas ce produit en stock
+                                      </div>
+                                    );
+                                  })()
+                                ) : (
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="gap-1.5 text-xs h-8 border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
+                                    className="gap-1.5 text-xs h-8"
                                     onClick={() =>
-                                      openProductSuggestions(
-                                        item.product_id,
-                                        item.product?.nom ?? "",
-                                      )
+                                      handleNegocierMarketplace(item)
                                     }
+                                    disabled={marketNegociatLoading === item.id}
                                   >
-                                    <Star className="w-3.5 h-3.5" />
-                                    Proposer mon offre
+                                    {marketNegociatLoading === item.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    )}
+                                    Négocier
                                   </Button>
                                 )}
-
-                                {/* Négocier pour tous */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1.5 text-xs h-8"
-                                  onClick={() =>
-                                    handleNegocierMarketplace(item)
-                                  }
-                                  disabled={marketNegociatLoading === item.id}
-                                >
-                                  {marketNegociatLoading === item.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <MessageCircle className="w-3.5 h-3.5" />
-                                  )}
-                                  Négocier
-                                </Button>
                               </div>
                             </div>
                           </CardContent>
