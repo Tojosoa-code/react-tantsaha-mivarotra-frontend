@@ -62,6 +62,10 @@ import {
   Leaf,
   BarChart3,
   Loader2,
+  Truck,
+  RotateCcw,
+  Wallet,
+  TrendingUp,
 } from "lucide-react";
 import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
@@ -261,6 +265,14 @@ export default function Dashboard() {
     commandes_pending: 0,
   });
 
+  // ── NOUVEAU : état revenus producteur ──
+  const [revenus, setRevenus] = useState<{
+    solde_coffre: number;
+    total_gagne: number;
+    nb_transactions_completees: number;
+    nb_transactions_en_cours: number;
+  } | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -306,9 +318,29 @@ export default function Dashboard() {
   const myEndpoint = isProd ? "/users/me/offers" : "/users/me/demands";
   const marketEndpoint = isProd ? "/demands" : "/offers";
 
+  // ── NOUVEAU : loadRevenus ──
+  const loadRevenus = async () => {
+    if (!isProd) return;
+    try {
+      const res = await api.get("/transactions/revenus");
+      setRevenus(res.data);
+    } catch {}
+  };
+
+  const refreshAll = useCallback(() => {
+    loadStats();
+    loadRevenus();
+    if (activeTab === "my-primary") loadMyItems(paginationData.my.page);
+    if (activeTab === "all-primary")
+      loadPrimaryItems(paginationData.primary.page);
+    if (activeTab === "marketplace")
+      loadMarketplaceItems(paginationData.market.page);
+  }, [activeTab, paginationData]);
+
   useEffect(() => {
     if (!user) return;
     loadStats();
+    loadRevenus();
     if (activeTab === "my-primary") loadMyItems(1);
     if (activeTab === "all-primary") loadPrimaryItems(1);
     if (activeTab === "marketplace") loadMarketplaceItems(1);
@@ -423,6 +455,8 @@ export default function Dashboard() {
       await api.delete(`${isProd ? "/offers" : "/demands"}/${itemId}`);
       toast.success("Supprimé avec succès");
       loadMyItems(1);
+      loadMarketplaceItems(1);
+      loadStats();
     } catch {
       toast.error("Erreur lors de la suppression");
     }
@@ -434,6 +468,8 @@ export default function Dashboard() {
       await api.post(`/transactions/offer/${offerId}/epuise`);
       toast.success("Produit marqué comme épuisé");
       loadMyItems(1);
+      loadMarketplaceItems(1);
+      loadStats();
     } catch {
       toast.error("Erreur");
     }
@@ -616,6 +652,16 @@ export default function Dashboard() {
     return isProd ? selectedItem.producteur : selectedItem.acheteur;
   };
   const displayUser = getDisplayUser();
+
+  // Polling toutes les 15 secondes pour synchronisation globale
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      loadStats();
+      if (isProd) loadRevenus();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [user, isProd]);
 
   if (!user)
     return (
@@ -974,6 +1020,65 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* ── Widget revenus — producteur seulement ── */}
+              {isProd && revenus && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-5 bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200 rounded-2xl">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-9 h-9 bg-violet-200 rounded-xl flex items-center justify-center">
+                        <Wallet className="w-4.5 h-4.5 text-violet-700" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                          En coffre-fort
+                        </p>
+                        <p className="text-[10px] text-violet-500">
+                          {revenus.nb_transactions_en_cours} transaction
+                          {revenus.nb_transactions_en_cours > 1 ? "s" : ""} en
+                          cours
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold text-violet-800">
+                      {revenus.solde_coffre.toLocaleString()} Ar
+                    </p>
+                    <p className="text-[10px] text-violet-500 mt-1">
+                      Sécurisé · libéré après réception client
+                    </p>
+                  </div>
+
+                  <div
+                    className="p-5 bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-2xl cursor-pointer hover:shadow-md transition-all"
+                    onClick={() => setActiveTab("commandes")}
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-9 h-9 bg-emerald-200 rounded-xl flex items-center justify-center">
+                        <TrendingUp className="w-4.5 h-4.5 text-emerald-700" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                          Total gagné
+                        </p>
+                        <p className="text-[10px] text-emerald-500">
+                          {revenus.nb_transactions_completees} vente
+                          {revenus.nb_transactions_completees > 1
+                            ? "s"
+                            : ""}{" "}
+                          complétée
+                          {revenus.nb_transactions_completees > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold text-emerald-800">
+                      {revenus.total_gagne.toLocaleString()} Ar
+                    </p>
+                    <p className="text-[10px] text-emerald-500 mt-1">
+                      Disponible · cliquez pour voir le détail
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
@@ -1342,6 +1447,17 @@ export default function Dashboard() {
                         className="hover:shadow-lg transition-all border hover:border-primary/30 group"
                       >
                         <CardContent className="p-5">
+                          {/* Image si disponible — Analyse marché */}
+                          {item.image_base64 && (
+                            <div className="w-full h-28 overflow-hidden rounded-xl mb-3">
+                              <img
+                                src={`data:image/jpeg;base64,${item.image_base64}`}
+                                alt={item.product?.nom}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          )}
+
                           <div className="flex items-start gap-3 mb-4 pb-3 border-b">
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
                               {isProd
@@ -1360,11 +1476,20 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
+
                           <div className="space-y-2.5">
                             <p className="font-bold">
                               {item.product?.nom ||
                                 `Produit #${item.product_id}`}
                             </p>
+
+                            {/* Description */}
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                                {item.description}
+                              </p>
+                            )}
+
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div className="flex flex-col gap-0.5">
                                 <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
@@ -1388,6 +1513,7 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
+
                           <div className="pt-3 border-t mt-3 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">
                               {new Date(item.created_at).toLocaleDateString(
@@ -1536,12 +1662,32 @@ export default function Dashboard() {
                               </div>
                             </div>
 
+                            {/* Image si disponible — Marketplace */}
+                            {item.image_base64 && (
+                              <div className="relative w-full h-36 overflow-hidden rounded-xl mb-3">
+                                <img
+                                  src={item.image_base64}
+                                  alt={item.product?.nom}
+                                  className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                              </div>
+                            )}
+
                             {/* Produit */}
                             <div className="mb-3">
                               <p className="font-bold text-base">
                                 {item.product?.nom}
                               </p>
-                              <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+
+                              {/* Description */}
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                                  {item.description}
+                                </p>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
                                 <div className="flex flex-col gap-0.5 p-2 bg-muted/50 rounded-lg">
                                   <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
                                     Quantité
@@ -1566,6 +1712,8 @@ export default function Dashboard() {
                                   </span>
                                 </div>
                               </div>
+
+                              {/* Stock restant */}
                               {isOfferItem &&
                                 item.quantite_restante !== null &&
                                 item.quantite_restante !== undefined && (
@@ -1574,6 +1722,49 @@ export default function Dashboard() {
                                     {Number(item.quantite_restante)}{" "}
                                     {item.product?.unite} encore disponibles
                                   </p>
+                                )}
+
+                              {/* Badges livraison/retrait — acheteur voit des offres */}
+                              {!isProd && (
+                                <div className="flex gap-1.5 mt-2 flex-wrap">
+                                  {item.livraison_possible && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-lg border border-orange-200">
+                                      <Truck className="w-3 h-3" />
+                                      Livraison possible
+                                    </span>
+                                  )}
+                                  {item.retrait_possible && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-muted/60 text-muted-foreground px-2 py-1 rounded-lg">
+                                      <Home className="w-3 h-3" />
+                                      Retrait sur place
+                                    </span>
+                                  )}
+                                  {item.quantite_min_commande && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded-lg border border-blue-200">
+                                      <Scale className="w-3 h-3" />
+                                      Min. {Number(
+                                        item.quantite_min_commande,
+                                      )}{" "}
+                                      {item.product?.unite}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Badge fréquence — producteur voit des demandes */}
+                              {isProd &&
+                                item.frequence &&
+                                item.frequence !== "unique" && (
+                                  <div className="flex gap-1.5 mt-2">
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-violet-50 text-violet-700 px-2 py-1 rounded-lg border border-violet-200">
+                                      <RotateCcw className="w-3 h-3" />
+                                      {item.frequence === "hebdomadaire"
+                                        ? "Besoin hebdomadaire"
+                                        : item.frequence === "mensuel"
+                                          ? "Besoin mensuel"
+                                          : "Besoin régulier"}
+                                    </span>
+                                  </div>
                                 )}
                             </div>
 
@@ -1658,13 +1849,19 @@ export default function Dashboard() {
           )}
 
           {/* ── SUGGESTIONS ── */}
-          {activeTab === "suggestions" && <SuggestionsTab user={user} />}
+          {activeTab === "suggestions" && (
+            <SuggestionsTab user={user} onRefresh={refreshAll} />
+          )}
 
           {/* ── NÉGOCIATIONS ── */}
-          {activeTab === "negociations" && <NegociationsPanel user={user} />}
+          {activeTab === "negociations" && (
+            <NegociationsPanel user={user} onRefresh={refreshAll} />
+          )}
 
           {/* ── COMMANDES ── */}
-          {activeTab === "commandes" && <CommandesPage user={user} />}
+          {activeTab === "commandes" && (
+            <CommandesPage user={user} onRefresh={refreshAll} />
+          )}
 
           {/* ── ROUTE ── */}
           {activeTab === "route" && (
@@ -1880,6 +2077,7 @@ export default function Dashboard() {
           onSuccess={() => {
             loadStats();
             loadMarketplaceItems(1);
+            loadRevenus();
           }}
         />
       )}
@@ -1895,6 +2093,7 @@ export default function Dashboard() {
         onSuccess={() => {
           loadMyItems(1);
           loadStats();
+          loadMarketplaceItems(1);
         }}
       />
     </div>

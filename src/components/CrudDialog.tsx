@@ -30,6 +30,11 @@ import {
   Ruler,
   MapPin,
   ArrowRight,
+  Truck,
+  Home,
+  RotateCcw,
+  Image as ImageIcon,
+  CheckCircle2,
 } from "lucide-react";
 
 interface Product {
@@ -108,6 +113,19 @@ export default function CrudDialog({
   // Submit
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Nouveaux champs step 2 ──
+  const [description, setDescription] = useState("");
+  const [livraisonPossible, setLivraisonPossible] = useState(false);
+  const [retraitPossible, setRetraitPossible] = useState(true);
+  const [quantiteMin, setQuantiteMin] = useState("");
+  const [imageBase64, setImageBase64] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
+  const [loadingImage, setLoadingImage] = useState(false);
+
+  // Pour la demande
+  const [livraisonSouhaitee, setLivraisonSouhaitee] = useState(false);
+  const [frequence, setFrequence] = useState("unique");
+
   const searchRef = useRef<HTMLDivElement>(null);
 
   const [dureeDisponibilite, setDureeDisponibilite] = useState("epuisement");
@@ -131,7 +149,7 @@ export default function CrudDialog({
       setDateDebut(item.date_dispo_debut ?? "");
       setDateFin(item.date_dispo_fin ?? "");
 
-      // ── AJOUT : pré-remplir la durée de disponibilité ──
+      // Pré-remplir la durée de disponibilité
       if (isOffer) {
         if (item.date_dispo_fin) {
           setDureeDisponibilite("precise");
@@ -139,9 +157,24 @@ export default function CrudDialog({
           setDureeDisponibilite("epuisement");
         }
       }
-      // ── FIN AJOUT ──
 
       setDateSouhaitee(item.date_souhaitee ?? "");
+
+      // ── Nouveaux champs ──
+      setDescription(item.description ?? "");
+      setQuantiteMin(String(item.quantite_min_commande ?? ""));
+      setImageBase64(item.image_base64 ?? "");
+      setImagePreview(
+        item.image_base64 ? `data:image/jpeg;base64,${item.image_base64}` : "",
+      );
+      if (isOffer) {
+        setLivraisonPossible(item.livraison_possible ?? false);
+        setRetraitPossible(item.retrait_possible ?? true);
+      } else {
+        setLivraisonSouhaitee(item.livraison_souhaitee ?? false);
+        setFrequence(item.frequence ?? "unique");
+      }
+
       if (item.product) {
         setSelectedProduct(item.product);
         setProdSearch(item.product.nom);
@@ -209,6 +242,15 @@ export default function CrudDialog({
     setDateFin("");
     setDateSouhaitee("");
     setDureeDisponibilite("epuisement");
+    // Nouveaux champs
+    setDescription("");
+    setLivraisonPossible(false);
+    setRetraitPossible(true);
+    setQuantiteMin("");
+    setImageBase64("");
+    setImagePreview("");
+    setLivraisonSouhaitee(false);
+    setFrequence("unique");
   };
 
   const handleClose = () => {
@@ -253,6 +295,36 @@ export default function CrudDialog({
     }
   };
 
+  // ── Gestion image ──
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image trop lourde — maximum 2 MB");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      toast.error("Fichier invalide — images uniquement");
+      return;
+    }
+
+    setLoadingImage(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      // const base64 = result.split(",")[1];
+      setImageBase64(result); // result = "data:image/jpeg;base64,..."
+      setImagePreview(result);
+      setLoadingImage(false);
+    };
+    reader.onerror = () => {
+      toast.error("Erreur lors de la lecture de l'image");
+      setLoadingImage(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleNextStep = () => {
     if (step === 0) {
       if (!selectedProduct) {
@@ -287,10 +359,20 @@ export default function CrudDialog({
 
     if (isOffer) {
       payload.prix_unitaire = Number(prixOuBudget);
+      payload.livraison_possible = livraisonPossible;
+      payload.retrait_possible = retraitPossible;
+      payload.description = description.trim() || null;
+      payload.image_base64 = imageBase64 || null;
+      if (quantiteMin && Number(quantiteMin) > 0) {
+        payload.quantite_min_commande = Number(quantiteMin);
+      }
       if (dateDebut) payload.date_dispo_debut = dateDebut;
       if (dateFin) payload.date_dispo_fin = dateFin;
     } else {
       if (prixOuBudget) payload.budget_max = Number(prixOuBudget);
+      payload.livraison_souhaitee = livraisonSouhaitee;
+      payload.frequence = frequence;
+      payload.description = description.trim() || null;
       if (dateSouhaitee) payload.date_souhaitee = dateSouhaitee;
     }
 
@@ -750,7 +832,6 @@ export default function CrudDialog({
                         value={dureeDisponibilite}
                         onChange={(e) => {
                           setDureeDisponibilite(e.target.value);
-                          // Calculer automatiquement dateFin
                           if (e.target.value === "epuisement") {
                             setDateFin("");
                           } else if (e.target.value === "1semaine") {
@@ -770,7 +851,6 @@ export default function CrudDialog({
                             d.setMonth(d.getMonth() + 3);
                             setDateFin(d.toISOString().split("T")[0]);
                           }
-                          // "precise" → on laisse l'utilisateur choisir la date
                         }}
                         className="w-full h-12 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                       >
@@ -784,7 +864,6 @@ export default function CrudDialog({
                         <option value="precise">Date précise</option>
                       </select>
 
-                      {/* Champ date précise — visible seulement si "precise" */}
                       {dureeDisponibilite === "precise" && (
                         <div className="mt-2 space-y-1">
                           <Input
@@ -803,7 +882,6 @@ export default function CrudDialog({
                         </div>
                       )}
 
-                      {/* Info sur la valeur calculée */}
                       {dureeDisponibilite !== "epuisement" &&
                         dureeDisponibilite !== "precise" &&
                         dateFin && (
@@ -826,7 +904,312 @@ export default function CrudDialog({
                     </div>
                   </>
                 )}
+
+                {/* Date souhaitée — demande */}
+                {!isOffer && (
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-sm font-medium flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                      Date souhaitée
+                      <span className="text-xs text-muted-foreground font-normal">
+                        (optionnel)
+                      </span>
+                    </Label>
+                    <Input
+                      type="date"
+                      value={dateSouhaitee}
+                      onChange={(e) => setDateSouhaitee(e.target.value)}
+                      className="h-12"
+                    />
+                  </div>
+                )}
               </div>
+              {/* fin grid cols-2 */}
+
+              {/* ── Description ── */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                  Description
+                  <span className="text-xs text-muted-foreground font-normal">
+                    (optionnel)
+                  </span>
+                </Label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder={
+                    isOffer
+                      ? "Ex : Tomates bien mûres, variété locale, récoltées le matin même. Idéales pour la cuisine professionnelle."
+                      : "Ex : Besoin de tomates fermes et calibrées pour notre restaurant. Livraison hebdomadaire souhaitée."
+                  }
+                  rows={3}
+                  className="w-full rounded-lg border bg-background px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              {/* ── Options livraison ── */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-muted-foreground" />
+                  {isOffer
+                    ? "Options de livraison"
+                    : "Mode de récupération souhaité"}
+                </Label>
+
+                {isOffer ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRetraitPossible((v) => !v)}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                        retraitPossible
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/30"
+                      }`}
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${retraitPossible ? "bg-primary/15" : "bg-muted"}`}
+                      >
+                        <Home className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Retrait sur place
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          L'acheteur vient chercher
+                        </p>
+                      </div>
+                      {retraitPossible && (
+                        <CheckCircle2 className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setLivraisonPossible((v) => !v)}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                        livraisonPossible
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/30"
+                      }`}
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${livraisonPossible ? "bg-primary/15" : "bg-muted"}`}
+                      >
+                        <Truck className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Livraison possible
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Je livre chez l'acheteur
+                        </p>
+                      </div>
+                      {livraisonPossible && (
+                        <CheckCircle2 className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setLivraisonSouhaitee(false)}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                        !livraisonSouhaitee
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/30"
+                      }`}
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${!livraisonSouhaitee ? "bg-primary/15" : "bg-muted"}`}
+                      >
+                        <Home className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Je viens chercher
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Retrait chez le producteur
+                        </p>
+                      </div>
+                      {!livraisonSouhaitee && (
+                        <CheckCircle2 className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setLivraisonSouhaitee(true)}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                        livraisonSouhaitee
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/30"
+                      }`}
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${livraisonSouhaitee ? "bg-primary/15" : "bg-muted"}`}
+                      >
+                        <Truck className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Livraison souhaitée
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Le producteur livre
+                        </p>
+                      </div>
+                      {livraisonSouhaitee && (
+                        <CheckCircle2 className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Fréquence (demande seulement) ── */}
+              {!isOffer && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+                    Fréquence d'achat
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        value: "unique",
+                        label: "Achat unique",
+                        desc: "Une seule fois",
+                      },
+                      {
+                        value: "hebdomadaire",
+                        label: "Hebdomadaire",
+                        desc: "Chaque semaine",
+                      },
+                      {
+                        value: "mensuel",
+                        label: "Mensuel",
+                        desc: "Chaque mois",
+                      },
+                      {
+                        value: "regulier",
+                        label: "Régulier",
+                        desc: "Selon les besoins",
+                      },
+                    ].map((f) => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => setFrequence(f.value)}
+                        className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all text-left ${
+                          frequence === f.value
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/30"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold">{f.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {f.desc}
+                          </p>
+                        </div>
+                        {frequence === f.value && (
+                          <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Quantité min commande (offre seulement) ── */}
+              {isOffer && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-muted-foreground" />
+                    Quantité minimum de commande
+                    <span className="text-xs text-muted-foreground font-normal">
+                      (optionnel)
+                    </span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={quantiteMin}
+                    onChange={(e) => setQuantiteMin(e.target.value)}
+                    placeholder={`Ex : 50 ${selectedProduct?.unite ?? "kg"} minimum`}
+                    className="h-12"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Les acheteurs ne pourront pas commander moins que cette
+                    quantité
+                  </p>
+                </div>
+              )}
+
+              {/* ── Photo du produit (offre seulement) ── */}
+              {isOffer && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                    Photo du produit
+                    <span className="text-xs text-muted-foreground font-normal">
+                      (optionnel · max 2 MB)
+                    </span>
+                  </Label>
+
+                  {imagePreview ? (
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="Aperçu"
+                        className="w-full h-48 object-cover rounded-xl border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageBase64("");
+                          setImagePreview("");
+                        }}
+                        className="absolute top-2 right-2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer hover:bg-muted/30 transition-colors">
+                      {loadingImage ? (
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center mb-2">
+                            <ImageIcon className="w-6 h-6 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm text-muted-foreground font-medium">
+                            Cliquez pour ajouter une photo
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            JPG, PNG — max 2 MB
+                          </p>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageChange}
+                        disabled={loadingImage}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -911,6 +1294,60 @@ export default function CrudDialog({
                           ? `${dateDebut || "—"} → ${dateFin || "—"}`
                           : dateSouhaitee || "—"}
                       </p>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {description && (
+                    <div className="flex items-start justify-between px-5 py-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Tag className="w-4 h-4" />
+                        Description
+                      </div>
+                      <p className="text-sm font-medium text-right max-w-xs">
+                        {description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Livraison */}
+                  <div className="flex items-center justify-between px-5 py-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Truck className="w-4 h-4" />
+                      Livraison
+                    </div>
+                    <div className="flex gap-1.5">
+                      {isOffer ? (
+                        <>
+                          {retraitPossible && (
+                            <Badge variant="secondary" className="text-xs">
+                              Retrait possible
+                            </Badge>
+                          )}
+                          {livraisonPossible && (
+                            <Badge variant="secondary" className="text-xs">
+                              Livraison possible
+                            </Badge>
+                          )}
+                        </>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">
+                          {livraisonSouhaitee
+                            ? "Livraison souhaitée"
+                            : "Retrait sur place"}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Aperçu photo */}
+                  {imagePreview && (
+                    <div className="px-5 py-4">
+                      <img
+                        src={imagePreview}
+                        alt="Photo"
+                        className="w-full h-32 object-cover rounded-xl"
+                      />
                     </div>
                   )}
                 </div>

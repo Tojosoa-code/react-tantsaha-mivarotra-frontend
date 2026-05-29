@@ -3,19 +3,40 @@ import api from "@/lib/axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader,
-  DialogTitle, DialogDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import NegociationChat from "@/components/NegociationChat";
 import CheckoutDialog from "@/components/CheckoutDialog";
 import {
-  Package, MapPin, Navigation, Scale, Banknote,
-  Loader2, Sparkles, Users, RefreshCw,
-  ShoppingCart, MessageCircle, CheckCircle2,
-  Clock, AlertCircle, X, ArrowRight, Leaf,
-  Truck, Home, Star, TrendingUp, Phone,
-  Calendar, RotateCcw,
+  Package,
+  MapPin,
+  Navigation,
+  Scale,
+  Banknote,
+  Loader2,
+  Sparkles,
+  Users,
+  RefreshCw,
+  ShoppingCart,
+  MessageCircle,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  X,
+  ArrowRight,
+  Leaf,
+  Truck,
+  Home,
+  Star,
+  TrendingUp,
+  Phone,
+  Calendar,
+  RotateCcw,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -90,33 +111,81 @@ interface Suggestion {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function frequenceLabel(f?: string) {
   switch (f) {
-    case "hebdomadaire": return "Besoin hebdomadaire";
-    case "mensuel": return "Besoin mensuel";
-    case "regulier": return "Besoin régulier";
-    default: return "Achat unique";
+    case "hebdomadaire":
+      return "Besoin hebdomadaire";
+    case "mensuel":
+      return "Besoin mensuel";
+    case "regulier":
+      return "Besoin régulier";
+    default:
+      return "Achat unique";
   }
 }
 
 function statutBadge(statut: string) {
   switch (statut) {
     case "interested":
-      return <Badge className="text-[10px] gap-1 bg-blue-50 text-blue-600 border-blue-200"><CheckCircle2 className="w-2.5 h-2.5" />Proposition envoyée</Badge>;
+      return (
+        <Badge className="text-[10px] gap-1 bg-blue-50 text-blue-600 border-blue-200">
+          <CheckCircle2 className="w-2.5 h-2.5" />
+          Proposition envoyée
+        </Badge>
+      );
     case "negotiating":
-      return <Badge className="text-[10px] gap-1 bg-violet-50 text-violet-600 border-violet-200"><MessageCircle className="w-2.5 h-2.5" />Négociation en cours</Badge>;
+      return (
+        <Badge className="text-[10px] gap-1 bg-violet-50 text-violet-600 border-violet-200">
+          <MessageCircle className="w-2.5 h-2.5" />
+          Négociation en cours
+        </Badge>
+      );
     case "done":
-      return <Badge className="text-[10px] gap-1 bg-emerald-50 text-emerald-600 border-emerald-200"><CheckCircle2 className="w-2.5 h-2.5" />Accord conclu</Badge>;
+      return (
+        <Badge className="text-[10px] gap-1 bg-emerald-50 text-emerald-600 border-emerald-200">
+          <CheckCircle2 className="w-2.5 h-2.5" />
+          Accord conclu
+        </Badge>
+      );
     default:
-      return <Badge className="text-[10px] gap-1 bg-primary/10 text-primary border-primary/20"><Sparkles className="w-2.5 h-2.5" />Nouvelle opportunité</Badge>;
+      return (
+        <Badge className="text-[10px] gap-1 bg-primary/10 text-primary border-primary/20">
+          <Sparkles className="w-2.5 h-2.5" />
+          Nouvelle opportunité
+        </Badge>
+      );
   }
 }
 
 function deadlineBadge(dateStr?: string) {
   if (!dateStr) return null;
   const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
-  if (diff < 0) return <Badge variant="destructive" className="text-[10px]">Expiré</Badge>;
-  if (diff <= 3) return <Badge className="text-[10px] bg-red-50 text-red-600 border-red-200"><AlertCircle className="w-2.5 h-2.5 mr-1" />Urgent · {diff}j</Badge>;
-  if (diff <= 7) return <Badge className="text-[10px] bg-amber-50 text-amber-600 border-amber-200"><Clock className="w-2.5 h-2.5 mr-1" />{diff}j restants</Badge>;
-  return <Badge variant="secondary" className="text-[10px]">{new Date(dateStr).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</Badge>;
+  if (diff < 0)
+    return (
+      <Badge variant="destructive" className="text-[10px]">
+        Expiré
+      </Badge>
+    );
+  if (diff <= 3)
+    return (
+      <Badge className="text-[10px] bg-red-50 text-red-600 border-red-200">
+        <AlertCircle className="w-2.5 h-2.5 mr-1" />
+        Urgent · {diff}j
+      </Badge>
+    );
+  if (diff <= 7)
+    return (
+      <Badge className="text-[10px] bg-amber-50 text-amber-600 border-amber-200">
+        <Clock className="w-2.5 h-2.5 mr-1" />
+        {diff}j restants
+      </Badge>
+    );
+  return (
+    <Badge variant="secondary" className="text-[10px]">
+      {new Date(dateStr).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "short",
+      })}
+    </Badge>
+  );
 }
 
 // ── Card Producteur ───────────────────────────────────────────────────────────
@@ -154,7 +223,8 @@ function CardProducteur({
             <div>
               <p className="font-bold text-sm">{r.product_name}</p>
               <p className="text-xs text-muted-foreground">
-                {r.quantite.toLocaleString()} {r.product_unite} · {r.prix_unitaire.toLocaleString()} Ar/{r.product_unite}
+                {r.quantite.toLocaleString()} {r.product_unite} ·{" "}
+                {r.prix_unitaire.toLocaleString()} Ar/{r.product_unite}
               </p>
             </div>
           </div>
@@ -184,15 +254,18 @@ function CardProducteur({
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm">{c.nom}</p>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-              <MapPin className="w-3 h-3" />{c.region}
+              <MapPin className="w-3 h-3" />
+              {c.region}
               <span className="mx-1">·</span>
-              <Navigation className="w-3 h-3" />{s.distance_km} km
+              <Navigation className="w-3 h-3" />
+              {s.distance_km} km
             </div>
             {/* Détails de la demande */}
             <div className="flex flex-wrap gap-1.5 mt-2">
               <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">
                 <Scale className="w-3 h-3" />
-                {c.quantite_demandee?.toLocaleString()} {r.product_unite} demandés
+                {c.quantite_demandee?.toLocaleString()} {r.product_unite}{" "}
+                demandés
               </span>
               {c.budget_max && (
                 <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-lg">
@@ -218,16 +291,34 @@ function CardProducteur({
 
         {/* Compatibilité */}
         <div className="flex gap-2 mt-3 pt-3 border-t">
-          <div className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.prix_compatible ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
-            {s.prix_compatible ? <CheckCircle2 className="w-3 h-3" /> : <X className="w-3 h-3" />}
+          <div
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.prix_compatible ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}
+          >
+            {s.prix_compatible ? (
+              <CheckCircle2 className="w-3 h-3" />
+            ) : (
+              <X className="w-3 h-3" />
+            )}
             Prix {s.prix_compatible ? "compatible" : "trop élevé"}
           </div>
-          <div className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.quantite_suffisante ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-            {s.quantite_suffisante ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+          <div
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.quantite_suffisante ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}
+          >
+            {s.quantite_suffisante ? (
+              <CheckCircle2 className="w-3 h-3" />
+            ) : (
+              <AlertCircle className="w-3 h-3" />
+            )}
             {s.quantite_suffisante ? "Stock suffisant" : "Stock partiel"}
           </div>
-          <div className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.livraison_compatible ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
-            {s.livraison_compatible ? <CheckCircle2 className="w-3 h-3" /> : <X className="w-3 h-3" />}
+          <div
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.livraison_compatible ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}
+          >
+            {s.livraison_compatible ? (
+              <CheckCircle2 className="w-3 h-3" />
+            ) : (
+              <X className="w-3 h-3" />
+            )}
             {s.livraison_compatible ? "Livraison OK" : "Livraison incompatible"}
           </div>
         </div>
@@ -235,7 +326,9 @@ function CardProducteur({
         {/* Valeur potentielle */}
         {s.valeur_potentielle && (
           <div className="mt-3 p-2.5 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between">
-            <span className="text-xs text-green-700">Valeur potentielle de cette vente</span>
+            <span className="text-xs text-green-700">
+              Valeur potentielle de cette vente
+            </span>
             <span className="text-sm font-bold text-green-700">
               {s.valeur_potentielle.toLocaleString()} Ar
             </span>
@@ -251,10 +344,14 @@ function CardProducteur({
             onClick={() => onPropose(s)}
             disabled={proposeLoading === s.match_id || s.match_statut !== "new"}
           >
-            {proposeLoading === s.match_id
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              : <Star className="w-3.5 h-3.5" />}
-            {s.match_statut !== "new" ? "Proposition envoyée" : "Proposer mon offre"}
+            {proposeLoading === s.match_id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Star className="w-3.5 h-3.5" />
+            )}
+            {s.match_statut !== "new"
+              ? "Proposition envoyée"
+              : "Proposer mon offre"}
           </Button>
           <Button
             size="sm"
@@ -304,7 +401,8 @@ function CardAcheteur({
               <p className="font-bold text-sm">{r.product_name}</p>
               <p className="text-xs text-muted-foreground">
                 {r.quantite.toLocaleString()} {r.product_unite} recherchés
-                {r.budget_max && ` · Budget ${r.budget_max.toLocaleString()} Ar/${r.product_unite}`}
+                {r.budget_max &&
+                  ` · Budget ${r.budget_max.toLocaleString()} Ar/${r.product_unite}`}
               </p>
             </div>
           </div>
@@ -334,9 +432,11 @@ function CardAcheteur({
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm">{c.nom}</p>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-              <MapPin className="w-3 h-3" />{c.region}
+              <MapPin className="w-3 h-3" />
+              {c.region}
               <span className="mx-1">·</span>
-              <Navigation className="w-3 h-3" />{s.distance_km} km
+              <Navigation className="w-3 h-3" />
+              {s.distance_km} km
             </div>
             {/* Détails de l'offre */}
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -346,7 +446,8 @@ function CardAcheteur({
               </span>
               <span className="inline-flex items-center gap-1 text-xs bg-muted/60 text-muted-foreground px-2 py-0.5 rounded-lg">
                 <Scale className="w-3 h-3" />
-                {c.quantite_disponible?.toLocaleString()} {r.product_unite} disponibles
+                {c.quantite_disponible?.toLocaleString()} {r.product_unite}{" "}
+                disponibles
               </span>
               {c.livraison_possible && (
                 <span className="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-lg">
@@ -367,16 +468,34 @@ function CardAcheteur({
 
         {/* Compatibilité */}
         <div className="flex gap-2 mt-3 pt-3 border-t">
-          <div className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.prix_compatible ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-            {s.prix_compatible ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+          <div
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.prix_compatible ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}
+          >
+            {s.prix_compatible ? (
+              <CheckCircle2 className="w-3 h-3" />
+            ) : (
+              <AlertCircle className="w-3 h-3" />
+            )}
             {s.prix_compatible ? "Sous votre budget" : "Légèrement au-dessus"}
           </div>
-          <div className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.quantite_suffisante ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-            {s.quantite_suffisante ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+          <div
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.quantite_suffisante ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}
+          >
+            {s.quantite_suffisante ? (
+              <CheckCircle2 className="w-3 h-3" />
+            ) : (
+              <AlertCircle className="w-3 h-3" />
+            )}
             {s.quantite_suffisante ? "Quantité suffisante" : "Stock partiel"}
           </div>
-          <div className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.livraison_compatible ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-            {s.livraison_compatible ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+          <div
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg flex-1 justify-center ${s.livraison_compatible ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}
+          >
+            {s.livraison_compatible ? (
+              <CheckCircle2 className="w-3 h-3" />
+            ) : (
+              <AlertCircle className="w-3 h-3" />
+            )}
             {s.livraison_compatible ? "Mode livraison OK" : "À vérifier"}
           </div>
         </div>
@@ -384,7 +503,9 @@ function CardAcheteur({
         {/* Économie potentielle */}
         {s.economie_potentielle && s.economie_potentielle > 0 && (
           <div className="mt-3 p-2.5 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between">
-            <span className="text-xs text-green-700">Vous économisez vs votre budget</span>
+            <span className="text-xs text-green-700">
+              Vous économisez vs votre budget
+            </span>
             <span className="text-sm font-bold text-green-700">
               {s.economie_potentielle.toLocaleString()} Ar
             </span>
@@ -395,7 +516,9 @@ function CardAcheteur({
         {c.telephone && (
           <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-muted/30 rounded-lg border border-dashed">
             <Phone className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-            <span className="text-xs font-semibold text-primary">{c.telephone}</span>
+            <span className="text-xs font-semibold text-primary">
+              {c.telephone}
+            </span>
           </div>
         )}
 
@@ -426,7 +549,13 @@ function CardAcheteur({
 }
 
 // ── Composant principal ───────────────────────────────────────────────────────
-export default function SuggestionsTab({ user }: { user: any }) {
+export default function SuggestionsTab({
+  user,
+  onRefresh,
+}: {
+  user: any;
+  onRefresh?: () => void;
+}) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Suggestion | null>(null);
@@ -459,10 +588,15 @@ export default function SuggestionsTab({ user }: { user: any }) {
       await api.post(`/matches/${s.match_id}/interested`);
       toast.success(`Proposition envoyée à ${s.contact.nom} !`);
       setSuggestions((prev) =>
-        prev.map((x) => x.match_id === s.match_id ? { ...x, match_statut: "interested" } : x)
+        prev.map((x) =>
+          x.match_id === s.match_id ? { ...x, match_statut: "interested" } : x,
+        ),
       );
+      onRefresh?.();
       setSelected((prev) =>
-        prev?.match_id === s.match_id ? { ...prev, match_statut: "interested" } : prev
+        prev?.match_id === s.match_id
+          ? { ...prev, match_statut: "interested" }
+          : prev,
       );
     } catch {
       toast.error("Erreur, veuillez réessayer");
@@ -508,7 +642,8 @@ export default function SuggestionsTab({ user }: { user: any }) {
           </p>
         </div>
         <Button variant="outline" onClick={fetchSuggestions} className="gap-2">
-          <RefreshCw className="w-4 h-4" />Actualiser
+          <RefreshCw className="w-4 h-4" />
+          Actualiser
         </Button>
       </div>
     );
@@ -519,7 +654,8 @@ export default function SuggestionsTab({ user }: { user: any }) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-bold text-lg">
-            {suggestions.length} opportunité{suggestions.length > 1 ? "s" : ""} identifiée{suggestions.length > 1 ? "s" : ""}
+            {suggestions.length} opportunité{suggestions.length > 1 ? "s" : ""}{" "}
+            identifiée{suggestions.length > 1 ? "s" : ""}
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             {isProd
@@ -527,8 +663,14 @@ export default function SuggestionsTab({ user }: { user: any }) {
               : "Voici les producteurs locaux qui ont ce que vous recherchez"}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchSuggestions} className="gap-1.5">
-          <RefreshCw className="w-3.5 h-3.5" />Actualiser
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchSuggestions}
+          className="gap-1.5"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Actualiser
         </Button>
       </div>
 
@@ -552,7 +694,7 @@ export default function SuggestionsTab({ user }: { user: any }) {
               onNegociate={openChat}
               onDetail={setSelected}
             />
-          )
+          ),
         )}
       </div>
 
@@ -581,39 +723,74 @@ export default function SuggestionsTab({ user }: { user: any }) {
           {selected && (
             <div className="space-y-6 pt-4">
               {/* Ma récolte / Ma recherche */}
-              <div className={`p-5 rounded-2xl border ${isProd ? "bg-primary/5 border-primary/20" : "bg-blue-50/60 border-blue-100"}`}>
-                <p className={`text-xs font-bold uppercase tracking-wide mb-3 ${isProd ? "text-primary" : "text-blue-600"}`}>
-                  {isProd ? "Votre récolte concernée" : "Votre recherche concernée"}
+              <div
+                className={`p-5 rounded-2xl border ${isProd ? "bg-primary/5 border-primary/20" : "bg-blue-50/60 border-blue-100"}`}
+              >
+                <p
+                  className={`text-xs font-bold uppercase tracking-wide mb-3 ${isProd ? "text-primary" : "text-blue-600"}`}
+                >
+                  {isProd
+                    ? "Votre récolte concernée"
+                    : "Votre recherche concernée"}
                 </p>
                 {isProd && selected.ma_recolte && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Produit</p>
-                      <p className="font-bold mt-0.5">{selected.ma_recolte.product_name}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        Produit
+                      </p>
+                      <p className="font-bold mt-0.5">
+                        {selected.ma_recolte.product_name}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Quantité</p>
-                      <p className="font-bold mt-0.5">{selected.ma_recolte.quantite.toLocaleString()} {selected.ma_recolte.product_unite}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        Quantité
+                      </p>
+                      <p className="font-bold mt-0.5">
+                        {selected.ma_recolte.quantite.toLocaleString()}{" "}
+                        {selected.ma_recolte.product_unite}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Prix</p>
-                      <p className="font-bold text-green-600 mt-0.5">{selected.ma_recolte.prix_unitaire.toLocaleString()} Ar/{selected.ma_recolte.product_unite}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        Prix
+                      </p>
+                      <p className="font-bold text-green-600 mt-0.5">
+                        {selected.ma_recolte.prix_unitaire.toLocaleString()} Ar/
+                        {selected.ma_recolte.product_unite}
+                      </p>
                     </div>
                   </div>
                 )}
                 {!isProd && selected.ma_recherche && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Produit</p>
-                      <p className="font-bold mt-0.5">{selected.ma_recherche.product_name}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        Produit
+                      </p>
+                      <p className="font-bold mt-0.5">
+                        {selected.ma_recherche.product_name}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Quantité</p>
-                      <p className="font-bold mt-0.5">{selected.ma_recherche.quantite.toLocaleString()} {selected.ma_recherche.product_unite}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        Quantité
+                      </p>
+                      <p className="font-bold mt-0.5">
+                        {selected.ma_recherche.quantite.toLocaleString()}{" "}
+                        {selected.ma_recherche.product_unite}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Budget</p>
-                      <p className="font-bold text-blue-600 mt-0.5">{selected.ma_recherche.budget_max?.toLocaleString() ?? "Non défini"} Ar</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        Budget
+                      </p>
+                      <p className="font-bold text-blue-600 mt-0.5">
+                        {selected.ma_recherche.budget_max?.toLocaleString() ??
+                          "Non défini"}{" "}
+                        Ar
+                      </p>
                     </div>
                   </div>
                 )}
@@ -625,34 +802,61 @@ export default function SuggestionsTab({ user }: { user: any }) {
                   Pourquoi cette correspondance ?
                 </p>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className={`p-3 rounded-xl text-center ${selected.prix_compatible ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-                    {selected.prix_compatible
-                      ? <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
-                      : <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />}
-                    <p className={`text-xs font-semibold ${selected.prix_compatible ? "text-green-700" : "text-amber-700"}`}>
-                      {selected.prix_compatible ? "Prix compatible" : "Prix à négocier"}
+                  <div
+                    className={`p-3 rounded-xl text-center ${selected.prix_compatible ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}
+                  >
+                    {selected.prix_compatible ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                    )}
+                    <p
+                      className={`text-xs font-semibold ${selected.prix_compatible ? "text-green-700" : "text-amber-700"}`}
+                    >
+                      {selected.prix_compatible
+                        ? "Prix compatible"
+                        : "Prix à négocier"}
                     </p>
                   </div>
-                  <div className={`p-3 rounded-xl text-center ${selected.quantite_suffisante ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-                    {selected.quantite_suffisante
-                      ? <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
-                      : <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />}
-                    <p className={`text-xs font-semibold ${selected.quantite_suffisante ? "text-green-700" : "text-amber-700"}`}>
-                      {selected.quantite_suffisante ? "Quantité OK" : "Stock partiel"}
+                  <div
+                    className={`p-3 rounded-xl text-center ${selected.quantite_suffisante ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}
+                  >
+                    {selected.quantite_suffisante ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                    )}
+                    <p
+                      className={`text-xs font-semibold ${selected.quantite_suffisante ? "text-green-700" : "text-amber-700"}`}
+                    >
+                      {selected.quantite_suffisante
+                        ? "Quantité OK"
+                        : "Stock partiel"}
                     </p>
                   </div>
-                  <div className={`p-3 rounded-xl text-center ${selected.livraison_compatible ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-                    {selected.livraison_compatible
-                      ? <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
-                      : <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />}
-                    <p className={`text-xs font-semibold ${selected.livraison_compatible ? "text-green-700" : "text-amber-700"}`}>
-                      {selected.livraison_compatible ? "Livraison OK" : "À vérifier"}
+                  <div
+                    className={`p-3 rounded-xl text-center ${selected.livraison_compatible ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}
+                  >
+                    {selected.livraison_compatible ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                    )}
+                    <p
+                      className={`text-xs font-semibold ${selected.livraison_compatible ? "text-green-700" : "text-amber-700"}`}
+                    >
+                      {selected.livraison_compatible
+                        ? "Livraison OK"
+                        : "À vérifier"}
                     </p>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5 mt-3">
                   {selected.score_details?.map((d, i) => (
-                    <p key={i} className="text-xs text-muted-foreground flex items-center gap-2">
+                    <p
+                      key={i}
+                      className="text-xs text-muted-foreground flex items-center gap-2"
+                    >
                       <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                       {d}
                     </p>
@@ -669,11 +873,13 @@ export default function SuggestionsTab({ user }: { user: any }) {
                   <div>
                     <p className="font-bold">{selected.contact.nom}</p>
                     <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3.5 h-3.5" />{selected.contact.region} · {selected.distance_km} km
+                      <MapPin className="w-3.5 h-3.5" />
+                      {selected.contact.region} · {selected.distance_km} km
                     </p>
                     {selected.contact.telephone && (
                       <p className="text-sm font-semibold text-primary flex items-center gap-1.5 mt-1">
-                        <Phone className="w-3.5 h-3.5" />{selected.contact.telephone}
+                        <Phone className="w-3.5 h-3.5" />
+                        {selected.contact.telephone}
                       </p>
                     )}
                   </div>
@@ -681,24 +887,34 @@ export default function SuggestionsTab({ user }: { user: any }) {
                     <Button
                       variant="outline"
                       className="gap-2"
-                      onClick={() => window.open(`tel:${selected.contact.telephone}`)}
+                      onClick={() =>
+                        window.open(`tel:${selected.contact.telephone}`)
+                      }
                     >
-                      <Phone className="w-4 h-4" />Appeler
+                      <Phone className="w-4 h-4" />
+                      Appeler
                     </Button>
                   )}
                 </div>
               </div>
 
               {/* Valeur / Économie */}
-              {(selected.valeur_potentielle || selected.economie_potentielle) && (
+              {(selected.valeur_potentielle ||
+                selected.economie_potentielle) && (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-2xl flex items-center justify-between">
                   <div>
                     <p className="text-xs text-green-700 font-medium">
-                      {selected.valeur_potentielle ? "Valeur potentielle de cette transaction" : "Économie réalisée vs votre budget"}
+                      {selected.valeur_potentielle
+                        ? "Valeur potentielle de cette transaction"
+                        : "Économie réalisée vs votre budget"}
                     </p>
                   </div>
                   <p className="text-2xl font-bold text-green-700">
-                    {(selected.valeur_potentielle ?? selected.economie_potentielle)?.toLocaleString()} Ar
+                    {(
+                      selected.valeur_potentielle ??
+                      selected.economie_potentielle
+                    )?.toLocaleString()}{" "}
+                    Ar
                   </p>
                 </div>
               )}
@@ -711,14 +927,24 @@ export default function SuggestionsTab({ user }: { user: any }) {
                       className="flex-1 gap-2 h-12"
                       variant="outline"
                       onClick={() => handlePropose(selected)}
-                      disabled={proposeLoading === selected.match_id || selected.match_statut !== "new"}
+                      disabled={
+                        proposeLoading === selected.match_id ||
+                        selected.match_statut !== "new"
+                      }
                     >
-                      {proposeLoading === selected.match_id
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : <Star className="w-4 h-4" />}
-                      {selected.match_statut !== "new" ? "Proposition déjà envoyée" : "Proposer mon offre"}
+                      {proposeLoading === selected.match_id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Star className="w-4 h-4" />
+                      )}
+                      {selected.match_statut !== "new"
+                        ? "Proposition déjà envoyée"
+                        : "Proposer mon offre"}
                     </Button>
-                    <Button className="flex-1 gap-2 h-12" onClick={() => openChat(selected)}>
+                    <Button
+                      className="flex-1 gap-2 h-12"
+                      onClick={() => openChat(selected)}
+                    >
                       <MessageCircle className="w-4 h-4" />
                       Négocier
                     </Button>
@@ -752,11 +978,22 @@ export default function SuggestionsTab({ user }: { user: any }) {
       {/* Chat */}
       <NegociationChat
         open={chatOpen}
-        onClose={() => { setChatOpen(false); setChatData(null); }}
+        onClose={() => {
+          setChatOpen(false);
+          setChatData(null);
+        }}
         matchId={chatData?.match_id ?? null}
         contactNom={chatData?.contact.nom ?? ""}
-        productName={isProd ? chatData?.ma_recolte?.product_name ?? "" : chatData?.ma_recherche?.product_name ?? ""}
-        productUnite={isProd ? chatData?.ma_recolte?.product_unite : chatData?.ma_recherche?.product_unite}
+        productName={
+          isProd
+            ? (chatData?.ma_recolte?.product_name ?? "")
+            : (chatData?.ma_recherche?.product_name ?? "")
+        }
+        productUnite={
+          isProd
+            ? chatData?.ma_recolte?.product_unite
+            : chatData?.ma_recherche?.product_unite
+        }
         contactTelephone={chatData?.contact.telephone}
         matchStatut={chatData?.match_statut}
         isAcheteur={!isProd}
@@ -772,7 +1009,10 @@ export default function SuggestionsTab({ user }: { user: any }) {
       {checkoutData?.contact.offer_id && (
         <CheckoutDialog
           open={checkoutOpen}
-          onClose={() => { setCheckoutOpen(false); setCheckoutData(null); }}
+          onClose={() => {
+            setCheckoutOpen(false);
+            setCheckoutData(null);
+          }}
           offer={{
             id: checkoutData.contact.offer_id,
             product_name: checkoutData.ma_recherche?.product_name ?? "",
@@ -787,7 +1027,10 @@ export default function SuggestionsTab({ user }: { user: any }) {
           onSuccess={() => {
             setCheckoutOpen(false);
             fetchSuggestions();
-            toast.success("Commande envoyée ! Le producteur va confirmer sous 24h.");
+            onRefresh?.();
+            toast.success(
+              "Commande envoyée ! Le producteur va confirmer sous 24h.",
+            );
           }}
         />
       )}

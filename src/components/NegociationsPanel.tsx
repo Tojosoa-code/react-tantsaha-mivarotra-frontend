@@ -12,6 +12,7 @@ import {
   Sparkles,
   ChevronRight,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface Conversation {
   match_id: number;
@@ -66,7 +67,13 @@ function timeAgo(dateStr?: string) {
   });
 }
 
-export default function NegociationsPanel({ user }: { user: any }) {
+export default function NegociationsPanel({
+  user,
+  onRefresh,
+}: {
+  user: any;
+  onRefresh?: () => void;
+}) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeChat, setActiveChat] = useState<Conversation | null>(null);
@@ -84,7 +91,9 @@ export default function NegociationsPanel({ user }: { user: any }) {
     try {
       const res = await api.get("/matches/conversations");
       setConversations(res.data);
+      onRefresh?.();
     } catch {
+      toast.error("Erreur lors du chargement des négociations");
     } finally {
       setLoading(false);
     }
