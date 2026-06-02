@@ -1,11 +1,31 @@
-import { cn } from "@/lib/utils"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Loading03Icon } from "@hugeicons/core-free-icons"
+import React from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { cn } from "@/lib/utils";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
 
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
-  return (
-    <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
-  )
+// On utilise Omit pour retirer 'icon' des props obligatoires du Spinner
+interface SpinnerProps extends Omit<
+  React.ComponentProps<typeof HugeiconsIcon>,
+  "icon"
+> {
+  className?: string;
 }
 
-export { Spinner }
+export const Spinner = ({
+  className,
+  strokeWidth = 2,
+  ...rest
+}: SpinnerProps) => {
+  return (
+    <HugeiconsIcon
+      // On place {...rest} AVANT pour que nos valeurs locales (icon, strokeWidth, etc.)
+      // écrasent tout le reste sans lever d'erreur TypeScript.
+      {...rest}
+      icon={Loading03Icon}
+      strokeWidth={strokeWidth}
+      role="status"
+      aria-label="Loading"
+      className={cn("size-4 animate-spin", className)}
+    />
+  );
+};

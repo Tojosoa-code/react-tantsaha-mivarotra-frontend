@@ -34,6 +34,7 @@ interface CheckoutProps {
     product_unite: string;
     quantite: number;
     quantite_restante?: number;
+    quantite_min_commande?: number;
     prix_unitaire: number;
     producteur_nom: string;
     producteur_telephone?: string;
@@ -58,6 +59,7 @@ export default function CheckoutDialog({
   const qte = parseFloat(quantite) || 0;
   const prixTotal = qte * offer.prix_unitaire;
   const stockDispo = offer.quantite_restante ?? offer.quantite;
+  const qteMin = offer.quantite_min_commande ?? 0;
 
   const handleClose = () => {
     setStep("quantite");
@@ -73,6 +75,10 @@ export default function CheckoutDialog({
     }
     if (qte > stockDispo) {
       toast.error(`Stock disponible : ${stockDispo} ${offer.product_unite}`);
+      return;
+    }
+    if (qteMin > 0 && qte < qteMin) {
+      toast.error(`Commande minimum : ${qteMin} ${offer.product_unite}`);
       return;
     }
     setStep("recap");
@@ -147,6 +153,19 @@ export default function CheckoutDialog({
                 </p>
               </div>
 
+              {/* Quantité minimum */}
+              {qteMin > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                  <Scale className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">
+                    Commande minimum :{" "}
+                    <span className="font-semibold">
+                      {qteMin} {offer.product_unite}
+                    </span>
+                  </p>
+                </div>
+              )}
+
               {/* Input quantité */}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5">
@@ -155,33 +174,53 @@ export default function CheckoutDialog({
                 </label>
                 <Input
                   type="number"
-                  min="0.01"
+                  min={qteMin > 0 ? qteMin : 0.01}
                   max={stockDispo}
                   step="0.01"
                   value={quantite}
                   onChange={(e) => setQuantite(e.target.value)}
-                  placeholder={`Ex : ${Math.min(100, stockDispo)}`}
+                  placeholder={
+                    qteMin > 0
+                      ? `Min. ${qteMin} ${offer.product_unite}`
+                      : `Ex : ${Math.min(100, stockDispo)}`
+                  }
                   className="text-base"
                   autoFocus
                 />
               </div>
 
               {/* Aperçu prix total */}
-              {qte > 0 && qte <= stockDispo && (
-                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-xl">
-                  <span className="text-sm text-green-700">Montant estimé</span>
-                  <span className="text-lg font-bold text-green-700">
-                    {prixTotal.toLocaleString()} Ar
-                  </span>
-                </div>
-              )}
+              {qte > 0 &&
+                qte <= stockDispo &&
+                (qteMin === 0 || qte >= qteMin) && (
+                  <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-xl">
+                    <span className="text-sm text-green-700">
+                      Montant estimé
+                    </span>
+                    <span className="text-lg font-bold text-green-700">
+                      {prixTotal.toLocaleString()} Ar
+                    </span>
+                  </div>
+                )}
 
+              {/* Erreur stock dépassé */}
               {qte > stockDispo && qte > 0 && (
                 <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
                   <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
                   <p className="text-xs text-red-700">
-                    Quantité demandée supérieure au stock disponible (
-                    {stockDispo} {offer.product_unite})
+                    Quantité supérieure au stock disponible ({stockDispo}{" "}
+                    {offer.product_unite})
+                  </p>
+                </div>
+              )}
+
+              {/* Erreur quantité min */}
+              {qte > 0 && qte <= stockDispo && qteMin > 0 && qte < qteMin && (
+                <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">
+                    Quantité inférieure au minimum requis ({qteMin}{" "}
+                    {offer.product_unite})
                   </p>
                 </div>
               )}
@@ -197,7 +236,9 @@ export default function CheckoutDialog({
                 <Button
                   className="flex-1 gap-1.5"
                   onClick={handleNext}
-                  disabled={qte <= 0 || qte > stockDispo}
+                  disabled={
+                    qte <= 0 || qte > stockDispo || (qteMin > 0 && qte < qteMin)
+                  }
                 >
                   Continuer
                   <ChevronRight className="w-4 h-4" />
@@ -223,7 +264,6 @@ export default function CheckoutDialog({
             </DialogHeader>
 
             <div className="space-y-4 pt-2">
-              {/* Détails commande */}
               <div className="rounded-xl border overflow-hidden">
                 <div className="bg-muted/30 px-4 py-2.5 border-b">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -271,7 +311,6 @@ export default function CheckoutDialog({
                 </div>
               </div>
 
-              {/* Infos producteur */}
               <div className="rounded-xl border overflow-hidden">
                 <div className="bg-muted/30 px-4 py-2.5 border-b">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -300,7 +339,6 @@ export default function CheckoutDialog({
                 </div>
               </div>
 
-              {/* Info expiration */}
               <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                 <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 leading-relaxed">

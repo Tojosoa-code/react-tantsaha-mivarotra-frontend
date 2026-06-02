@@ -36,6 +36,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { formatMadagascarPhone } from "@/helpers/formattage";
 import { REGIONS, REGION_COORDS } from "@/helpers/region";
+import { detectRegionFromCoords } from "@/helpers/detection";
 
 export default function Register() {
   const navigate = useNavigate();

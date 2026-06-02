@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import api from "@/lib/axios";
 import {
-  Package,
   MapPin,
   Navigation,
   Scale,
@@ -22,7 +21,6 @@ import {
   Sparkles,
   TrendingUp,
   Phone,
-  Star,
   Users,
   CheckCircle2,
   Clock,

@@ -66,24 +66,29 @@ import {
   RotateCcw,
   Wallet,
   TrendingUp,
+  SlidersHorizontal,
+  Home as HomeIcon,
 } from "lucide-react";
 import { OrganicSproutLoader } from "@/components/ui/agriculture-loader-overlay";
 
+// ── SearchBar hors composant ──────────────────────────────────────────────────
 interface SearchBarProps {
   value: string;
   onChange: (q: string) => void;
+  onSearch: () => void;
   suggestions: string[];
   suggestionsOpen: boolean;
   onSelectSuggestion: (s: string) => void;
   onClear: () => void;
   onFocus: () => void;
   placeholder: string;
-  searchRef: React.RefObject<HTMLDivElement>;
+  searchRef: React.RefObject<HTMLDivElement | null>;
 }
 
 function SearchBarWithTrie({
   value,
   onChange,
+  onSearch,
   suggestions,
   suggestionsOpen,
   onSelectSuggestion,
@@ -93,12 +98,15 @@ function SearchBarWithTrie({
   searchRef,
 }: SearchBarProps) {
   return (
-    <div className="relative flex-1 max-w-md" ref={searchRef}>
-      <Search className="absolute top-1.5 left-3 text-muted-foreground w-4 h-4 pointer-events-none" />
+    <div className="relative flex-1 max-w-sm" ref={searchRef}>
+      <Search className="text-muted-foreground w-4 h-4 pointer-events-none absolute top-1.5 left-3" />
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSearch();
+        }}
         placeholder={placeholder}
         className="pl-10 pr-9"
         autoComplete="off"
@@ -106,7 +114,7 @@ function SearchBarWithTrie({
       {value && (
         <button
           type="button"
-          className="absolute right-6 top-10 text-muted-foreground hover:text-foreground z-10"
+          className="absolute top-1.5 right-3 text-muted-foreground hover:text-foreground"
           onMouseDown={(e) => {
             e.preventDefault();
             onClear();
@@ -116,7 +124,7 @@ function SearchBarWithTrie({
         </button>
       )}
       {suggestionsOpen && suggestions.length > 0 && (
-        <div className="top-full mt-1 w-full bg-card border rounded-xl shadow-xl overflow-y-auto">
+        <div className="mt-1 w-full bg-card border rounded-xl shadow-xl overflow-hidden">
           <div className="px-3 py-1.5 border-b bg-muted/30">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
               Suggestions
@@ -205,7 +213,176 @@ function StandardPagination({
   );
 }
 
+// ── FilterBar ─────────────────────────────────────────────────────────────────
+interface FilterBarProps {
+  searchValue: string;
+  onSearchChange: (v: string) => void;
+  onSearch: () => void;
+  onClear: () => void;
+  suggestions: string[];
+  suggestionsOpen: boolean;
+  onSelectSuggestion: (s: string) => void;
+  onFocus: () => void;
+  searchRef: React.RefObject<HTMLDivElement | null>;
+  placeholder: string;
+  regions: string[];
+  selectedRegion: string;
+  onRegionChange: (r: string) => void;
+  products: any[];
+  selectedProduct: string;
+  onProductChange: (p: string) => void;
+  sortBy: string;
+  onSortChange: (s: string) => void;
+  sortOrder: string;
+  onSortOrderChange: (s: string) => void;
+  onReset: () => void;
+}
+
+function FilterBar({
+  searchValue,
+  onSearchChange,
+  onSearch,
+  onClear,
+  suggestions,
+  suggestionsOpen,
+  onSelectSuggestion,
+  onFocus,
+  searchRef,
+  placeholder,
+  regions,
+  selectedRegion,
+  onRegionChange,
+  products,
+  selectedProduct,
+  onProductChange,
+  sortBy,
+  onSortChange,
+  sortOrder,
+  onSortOrderChange,
+  onReset,
+}: FilterBarProps) {
+  const [showFilters, setShowFilters] = useState(false);
+  const hasFilters =
+    selectedRegion || selectedProduct || sortBy !== "created_at";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <SearchBarWithTrie
+          value={searchValue}
+          onChange={onSearchChange}
+          onSearch={onSearch}
+          suggestions={suggestions}
+          suggestionsOpen={suggestionsOpen}
+          onSelectSuggestion={onSelectSuggestion}
+          onClear={onClear}
+          onFocus={onFocus}
+          placeholder={placeholder}
+          searchRef={searchRef}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className={`gap-1.5 ${hasFilters ? "border-primary text-primary" : ""}`}
+          onClick={() => setShowFilters((v) => !v)}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          Filtres
+          {hasFilters && (
+            <span className="w-4 h-4 bg-primary text-primary-foreground text-[10px] rounded-full flex items-center justify-center">
+              !
+            </span>
+          )}
+        </Button>
+        {hasFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground gap-1"
+            onClick={onReset}
+          >
+            <X className="w-3.5 h-3.5" />
+            Réinitialiser
+          </Button>
+        )}
+      </div>
+
+      {showFilters && (
+        <div className="flex flex-wrap gap-3 p-4 bg-muted/30 rounded-xl border">
+          {/* Région */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              Région
+            </label>
+            <select
+              value={selectedRegion}
+              onChange={(e) => onRegionChange(e.target.value)}
+              className="h-9 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring min-w-[160px]"
+            >
+              <option value="">Toutes les régions</option>
+              {regions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Produit */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <Package className="w-3 h-3" />
+              Produit
+            </label>
+            <select
+              value={selectedProduct}
+              onChange={(e) => onProductChange(e.target.value)}
+              className="h-9 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring min-w-[160px]"
+            >
+              <option value="">Tous les produits</option>
+              {products.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.nom}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Trier par */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              Trier par
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => onSortChange(e.target.value)}
+                className="h-9 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="created_at">Date de publication</option>
+                <option value="prix_unitaire">Prix</option>
+                <option value="quantite">Quantité</option>
+              </select>
+              <button
+                onClick={() =>
+                  onSortOrderChange(sortOrder === "desc" ? "asc" : "desc")
+                }
+                className="h-9 px-3 rounded-lg border bg-background text-sm hover:bg-muted transition-colors"
+              >
+                {sortOrder === "desc" ? "↓ Décroissant" : "↑ Croissant"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  console.log("Render Dashboard");
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<
@@ -231,30 +408,23 @@ export default function Dashboard() {
 
   const [loading, setLoading] = useState(false);
   const [dropdowns, setDropdowns] = useState({ primary: false, market: false });
-
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-
   const [crudOpen, setCrudOpen] = useState(false);
   const [crudMode, setCrudMode] = useState<"create" | "edit">("create");
   const [crudItem, setCrudItem] = useState<any>(null);
-
   const [productSuggestionsOpen, setProductSuggestionsOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(
     null,
   );
   const [selectedProductName, setSelectedProductName] = useState("");
-
   const [negociationOpen, setNegociationOpen] = useState(false);
   const [negociationData, setNegociationData] = useState<any>(null);
-
-  // Négociation depuis marketplace
   const [marketNegociatOpen, setMarketNegociatOpen] = useState(false);
   const [marketNegociatData, setMarketNegociatData] = useState<any>(null);
   const [marketNegociatLoading, setMarketNegociatLoading] = useState<
     number | null
   >(null);
-
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutOffer, setCheckoutOffer] = useState<any>(null);
 
@@ -265,7 +435,6 @@ export default function Dashboard() {
     commandes_pending: 0,
   });
 
-  // ── NOUVEAU : état revenus producteur ──
   const [revenus, setRevenus] = useState<{
     solde_coffre: number;
     total_gagne: number;
@@ -273,19 +442,72 @@ export default function Dashboard() {
     nb_transactions_en_cours: number;
   } | null>(null);
 
+  // ── Recherche et filtres ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  // Filtres analyse marché
+  const [primaryRegion, setPrimaryRegion] = useState("");
+  const [primaryProduct, setPrimaryProduct] = useState("");
+  const [primarySort, setPrimarySort] = useState("created_at");
+  const [primarySortOrder, setPrimarySortOrder] = useState("desc");
+
+  // Filtres marketplace
+  const [marketRegion, setMarketRegion] = useState("");
+  const [marketProduct, setMarketProduct] = useState("");
+  const [marketSort, setMarketSort] = useState("created_at");
+  const [marketSortOrder, setMarketSortOrder] = useState("desc");
+
+  // Données de référence
+  const [regions, setRegions] = useState<string[]>([]);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+
+  // ── Chargement données de référence ──────────────────────────────────────
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
+    const fetchRefs = async () => {
+      try {
+        const [prodRes] = await Promise.all([api.get("/products?limit=200")]);
+        setAllProducts(prodRes.data ?? []);
+      } catch {}
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    fetchRefs();
+  }, []);
+
+  // Charger les régions selon le tab actif
+  const loadRegions = async (currentUser = user) => {
+    try {
+      if (!currentUser) return;
+      const isProducteur = currentUser.role === "producteur";
+      const endpoint =
+        activeTab === "marketplace"
+          ? isProducteur
+            ? "/demands/regions"
+            : "/offers/regions"
+          : isProducteur
+            ? "/offers/regions"
+            : "/demands/regions";
+      const res = await api.get(endpoint);
+      setRegions(res.data ?? []);
+    } catch {
+      toast.error("Erreur lors de la chargement des regions");
+    }
+  };
+
+  useEffect(() => {
+    if (searchRef.current) {
+      const handler = (e: MouseEvent) => {
+        if (
+          searchRef.current &&
+          !searchRef.current.contains(e.target as Node)
+        ) {
+          setSearchOpen(false);
+        }
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
   }, []);
 
   useEffect(() => {
@@ -318,7 +540,6 @@ export default function Dashboard() {
   const myEndpoint = isProd ? "/users/me/offers" : "/users/me/demands";
   const marketEndpoint = isProd ? "/demands" : "/offers";
 
-  // ── NOUVEAU : loadRevenus ──
   const loadRevenus = async () => {
     if (!isProd) return;
     try {
@@ -333,19 +554,29 @@ export default function Dashboard() {
     if (activeTab === "my-primary") loadMyItems(paginationData.my.page);
     if (activeTab === "all-primary")
       loadPrimaryItems(paginationData.primary.page);
-    if (activeTab === "marketplace" && isProd && myItems.length === 0)
-      loadMyItems(1);
-    loadMarketplaceItems(paginationData.market.page);
+    if (activeTab === "marketplace")
+      loadMarketplaceItems(paginationData.market.page);
   }, [activeTab, paginationData]);
 
   useEffect(() => {
     if (!user) return;
     loadStats();
     loadRevenus();
+    loadRegions(user);
     if (activeTab === "my-primary") loadMyItems(1);
     if (activeTab === "all-primary") loadPrimaryItems(1);
     if (activeTab === "marketplace") loadMarketplaceItems(1);
   }, [activeTab, user]);
+
+  // Polling 15s
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      loadStats();
+      if (isProd) loadRevenus();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [user, isProd]);
 
   const loadStats = async () => {
     try {
@@ -394,13 +625,25 @@ export default function Dashboard() {
     }
   };
 
-  const loadPrimaryItems = async (page = 1) => {
+  const loadPrimaryItems = async (page = 1, overrides?: any) => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await api.get(
-        `${primaryEndpoint}?page=${page}&page_size=12&exclude_current_user=true`,
-      );
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: "12",
+        exclude_current_user: "true",
+        sort_by: overrides?.sort ?? primarySort,
+        sort_order: overrides?.sortOrder ?? primarySortOrder,
+      });
+      const region = overrides?.region ?? primaryRegion;
+      const product = overrides?.product ?? primaryProduct;
+      const search = overrides?.search ?? searchQuery;
+      if (region) params.append("region", region);
+      if (product) params.append("product_id", product);
+      if (search) params.append("search", search);
+
+      const res = await api.get(`${primaryEndpoint}?${params}`);
       setPrimaryItems(res.data.items || []);
       setPaginationData((prev) => ({
         ...prev,
@@ -417,11 +660,24 @@ export default function Dashboard() {
     }
   };
 
-  const loadMarketplaceItems = async (page = 1) => {
+  const loadMarketplaceItems = async (page = 1, overrides?: any) => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await api.get(`${marketEndpoint}?page=${page}&page_size=12`);
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: "12",
+        sort_by: overrides?.sort ?? marketSort,
+        sort_order: overrides?.sortOrder ?? marketSortOrder,
+      });
+      const region = overrides?.region ?? marketRegion;
+      const product = overrides?.product ?? marketProduct;
+      const search = overrides?.search ?? searchQuery;
+      if (region) params.append("region", region);
+      if (product) params.append("product_id", product);
+      if (search) params.append("search", search);
+
+      const res = await api.get(`${marketEndpoint}?${params}`);
       setMarketplaceItems(res.data.items || []);
       setPaginationData((prev) => ({
         ...prev,
@@ -438,12 +694,118 @@ export default function Dashboard() {
     }
   };
 
+  // ── Recherche Trie (suggestions) ──────────────────────────────────────────
+  const handleSearch = useCallback(async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchSuggestions([]);
+      setSearchOpen(false);
+      return;
+    }
+    try {
+      const res = await api.get(
+        `/matches/search?prefix=${encodeURIComponent(q)}`,
+      );
+      const noms = (res.data ?? []).map((p: any) => p.nom);
+      setSearchSuggestions(noms);
+      setSearchOpen(noms.length > 0);
+    } catch {}
+  }, []);
+
+  // Déclenche la recherche serveur
+  const triggerSearch = () => {
+    setSearchOpen(false);
+    if (activeTab === "all-primary") loadPrimaryItems(1);
+    if (activeTab === "marketplace") loadMarketplaceItems(1);
+  };
+
+  const handleSelectSuggestion = (s: string) => {
+    setSearchQuery(s);
+    setSearchOpen(false);
+    setTimeout(() => {
+      if (activeTab === "all-primary") loadPrimaryItems(1, { search: s });
+      if (activeTab === "marketplace") loadMarketplaceItems(1, { search: s });
+    }, 0);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setSearchSuggestions([]);
+    setSearchOpen(false);
+    if (activeTab === "all-primary") loadPrimaryItems(1, { search: "" });
+    if (activeTab === "marketplace") loadMarketplaceItems(1, { search: "" });
+  };
+
+  // ── Handlers filtres analyse marché ──────────────────────────────────────
+  const handlePrimaryRegion = (r: string) => {
+    setPrimaryRegion(r);
+    loadPrimaryItems(1, { region: r });
+  };
+  const handlePrimaryProduct = (p: string) => {
+    setPrimaryProduct(p);
+    loadPrimaryItems(1, { product: p });
+  };
+  const handlePrimarySort = (s: string) => {
+    setPrimarySort(s);
+    loadPrimaryItems(1, { sort: s });
+  };
+  const handlePrimarySortOrder = (s: string) => {
+    setPrimarySortOrder(s);
+    loadPrimaryItems(1, { sortOrder: s });
+  };
+  const resetPrimaryFilters = () => {
+    setPrimaryRegion("");
+    setPrimaryProduct("");
+    setPrimarySort("created_at");
+    setPrimarySortOrder("desc");
+    setSearchQuery("");
+    loadPrimaryItems(1, {
+      region: "",
+      product: "",
+      sort: "created_at",
+      sortOrder: "desc",
+      search: "",
+    });
+  };
+
+  // ── Handlers filtres marketplace ──────────────────────────────────────────
+  const handleMarketRegion = (r: string) => {
+    setMarketRegion(r);
+    loadMarketplaceItems(1, { region: r });
+  };
+  const handleMarketProduct = (p: string) => {
+    setMarketProduct(p);
+    loadMarketplaceItems(1, { product: p });
+  };
+  const handleMarketSort = (s: string) => {
+    setMarketSort(s);
+    loadMarketplaceItems(1, { sort: s });
+  };
+  const handleMarketSortOrder = (s: string) => {
+    setMarketSortOrder(s);
+    loadMarketplaceItems(1, { sortOrder: s });
+  };
+  const resetMarketFilters = () => {
+    setMarketRegion("");
+    setMarketProduct("");
+    setMarketSort("created_at");
+    setMarketSortOrder("desc");
+    setSearchQuery("");
+    loadMarketplaceItems(1, {
+      region: "",
+      product: "",
+      sort: "created_at",
+      sortOrder: "desc",
+      search: "",
+    });
+  };
+
+  // ── Actions ───────────────────────────────────────────────────────────────
   const handleCreate = () => {
     setCrudItem(null);
     setCrudMode("create");
     setCrudOpen(true);
   };
-
   const handleEdit = (item: any) => {
     setCrudItem(item);
     setCrudMode("edit");
@@ -495,6 +857,9 @@ export default function Dashboard() {
       product_name: item.product?.nom ?? "",
       product_unite: item.product?.unite ?? "kg",
       quantite: parseFloat(item.quantite),
+      quantite_min_commande: item.quantite_min_commande
+        ? parseFloat(item.quantite_min_commande)
+        : undefined,
       quantite_restante: item.quantite_restante
         ? parseFloat(item.quantite_restante)
         : undefined,
@@ -563,7 +928,6 @@ export default function Dashboard() {
     if (!deadline) return false;
     return new Date(deadline) < new Date();
   };
-
   const isEpuise = (item: any): boolean => item.statut === "epuise";
 
   const DeadlineBadge = ({ item }: { item: any }) => {
@@ -618,37 +982,8 @@ export default function Dashboard() {
     setProductSuggestionsOpen(true);
   };
 
-  const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
-      setSearchSuggestions([]);
-      setSearchOpen(false);
-      return;
-    }
-    try {
-      const res = await api.get(
-        `/matches/search?prefix=${encodeURIComponent(q)}`,
-      );
-      const noms = (res.data ?? []).map((p: any) => p.nom);
-      setSearchSuggestions(noms);
-      setSearchOpen(noms.length > 0);
-    } catch {}
-  }, []);
-
-  const filterBySearch = (items: any[]) => {
-    if (!searchQuery.trim()) return items;
-    const q = searchQuery.toLowerCase();
-    return items.filter(
-      (item) =>
-        item.product?.nom?.toLowerCase().includes(q) ||
-        item.product?.categorie?.toLowerCase().includes(q) ||
-        item.region?.toLowerCase().includes(q),
-    );
-  };
-
-  // Vérifie si le producteur a une offre active pour ce product_id
   const prodHasOfferFor = (productId: number): any | null => {
-    if (!isProd) return true; // acheteur → toujours autorisé
+    if (!isProd) return true;
     return (
       myItems.find(
         (o: any) => o.product_id === productId && o.statut !== "epuise",
@@ -663,16 +998,6 @@ export default function Dashboard() {
     return isProd ? selectedItem.producteur : selectedItem.acheteur;
   };
   const displayUser = getDisplayUser();
-
-  // Polling toutes les 15 secondes pour synchronisation globale
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      loadStats();
-      if (isProd) loadRevenus();
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [user, isProd]);
 
   if (!user)
     return (
@@ -793,7 +1118,6 @@ export default function Dashboard() {
                 </span>
               )}
             </Button>
-
             <Button
               variant={activeTab === "negociations" ? "default" : "ghost"}
               className="w-full justify-start gap-3 hover:bg-primary/10"
@@ -802,7 +1126,6 @@ export default function Dashboard() {
               <MessageCircle className="w-5 h-5" />
               Négociations
             </Button>
-
             <Button
               variant={activeTab === "commandes" ? "default" : "ghost"}
               className="w-full justify-start gap-3 hover:bg-primary/10"
@@ -817,15 +1140,6 @@ export default function Dashboard() {
                   {statsData.commandes_pending}
                 </span>
               )}
-            </Button>
-
-            <Button
-              variant={activeTab === "route" ? "default" : "ghost"}
-              className="w-full justify-start gap-3 hover:bg-primary/10"
-              onClick={() => setActiveTab("route")}
-            >
-              <Route className="w-5 h-5" />
-              Optimisation de tournée
             </Button>
           </div>
         </div>
@@ -953,7 +1267,7 @@ export default function Dashboard() {
                   <CardContent className="pt-5 pb-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Package className="w-4.5 h-4.5 text-primary" />
+                        <Package className="w-4 h-4 text-primary" />
                       </div>
                       <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
@@ -971,7 +1285,7 @@ export default function Dashboard() {
                   <CardContent className="pt-5 pb-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center">
-                        <Sparkles className="w-4.5 h-4.5 text-violet-600" />
+                        <Sparkles className="w-4 h-4 text-violet-600" />
                       </div>
                       <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
@@ -991,7 +1305,7 @@ export default function Dashboard() {
                   <CardContent className="pt-5 pb-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <MessageCircle className="w-4.5 h-4.5 text-blue-600" />
+                        <MessageCircle className="w-4 h-4 text-blue-600" />
                       </div>
                       <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
@@ -1011,12 +1325,12 @@ export default function Dashboard() {
                   <CardContent className="pt-5 pb-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center">
-                        <ShoppingCart className="w-4.5 h-4.5 text-amber-600" />
+                        <ShoppingCart className="w-4 h-4 text-amber-600" />
                       </div>
                       {statsData.commandes_pending > 0 && (
                         <Badge className="text-[10px] bg-amber-500 text-white border-0 px-1.5">
-                          {statsData.commandes_pending} urgent
-                          {statsData.commandes_pending > 1 ? "es" : "e"}
+                          {statsData.commandes_pending} urgente
+                          {statsData.commandes_pending > 1 ? "s" : ""}
                         </Badge>
                       )}
                     </div>
@@ -1032,13 +1346,12 @@ export default function Dashboard() {
                 </Card>
               </div>
 
-              {/* ── Widget revenus — producteur seulement ── */}
               {isProd && revenus && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-5 bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200 rounded-2xl">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-9 h-9 bg-violet-200 rounded-xl flex items-center justify-center">
-                        <Wallet className="w-4.5 h-4.5 text-violet-700" />
+                        <Wallet className="w-4 h-4 text-violet-700" />
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
@@ -1058,14 +1371,13 @@ export default function Dashboard() {
                       Sécurisé · libéré après réception client
                     </p>
                   </div>
-
                   <div
                     className="p-5 bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-2xl cursor-pointer hover:shadow-md transition-all"
                     onClick={() => setActiveTab("commandes")}
                   >
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-9 h-9 bg-emerald-200 rounded-xl flex items-center justify-center">
-                        <TrendingUp className="w-4.5 h-4.5 text-emerald-700" />
+                        <TrendingUp className="w-4 h-4 text-emerald-700" />
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
@@ -1100,7 +1412,7 @@ export default function Dashboard() {
                     onClick={handleCreate}
                     className="group flex items-center gap-4 p-4 bg-card border rounded-xl hover:border-primary/40 hover:shadow-md transition-all text-left"
                   >
-                    <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors flex-shrink-0">
+                    <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary transition-colors flex-shrink-0">
                       <PlusCircle className="w-5 h-5 text-primary group-hover:text-white" />
                     </div>
                     <div>
@@ -1113,7 +1425,6 @@ export default function Dashboard() {
                     </div>
                     <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto group-hover:text-primary transition-colors flex-shrink-0" />
                   </button>
-
                   <button
                     onClick={() => setActiveTab("marketplace")}
                     className="group flex items-center gap-4 p-4 bg-card border rounded-xl hover:border-orange-300 hover:shadow-md transition-all text-left"
@@ -1133,7 +1444,6 @@ export default function Dashboard() {
                     </div>
                     <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto group-hover:text-orange-500 transition-colors flex-shrink-0" />
                   </button>
-
                   <button
                     onClick={() => setActiveTab("suggestions")}
                     className="group flex items-center gap-4 p-4 bg-card border rounded-xl hover:border-violet-300 hover:shadow-md transition-all text-left"
@@ -1352,7 +1662,7 @@ export default function Dashboard() {
                                           onClick={() =>
                                             handleMarkEpuise(item.id)
                                           }
-                                          className="h-8 w-8 hover:bg-gray-50 hover:text-gray-600 hover:border-gray-300"
+                                          className="h-8 w-8 hover:bg-gray-50 hover:text-gray-600"
                                           title="Marquer comme épuisé"
                                         >
                                           <X className="w-3.5 h-3.5" />
@@ -1398,32 +1708,31 @@ export default function Dashboard() {
             <div className="space-y-6">
               <Card className="shadow-sm">
                 <CardContent className="pt-6">
-                  <div className="flex items-center gap-4">
-                    <SearchBarWithTrie
-                      value={searchQuery}
-                      onChange={handleSearch}
-                      suggestions={searchSuggestions}
-                      suggestionsOpen={searchOpen}
-                      onSelectSuggestion={(s) => {
-                        setSearchQuery(s);
-                        setSearchOpen(false);
-                      }}
-                      onClear={() => {
-                        setSearchQuery("");
-                        setSearchSuggestions([]);
-                        setSearchOpen(false);
-                      }}
-                      onFocus={() =>
-                        searchSuggestions.length > 0 && setSearchOpen(true)
-                      }
-                      placeholder="Rechercher un produit, une région..."
-                      searchRef={searchRef}
-                    />
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <BarChart3 className="w-4 h-4" />
-                      <span>Analysez les prix du marché en temps réel</span>
-                    </div>
-                  </div>
+                  <FilterBar
+                    searchValue={searchQuery}
+                    onSearchChange={handleSearch}
+                    onSearch={triggerSearch}
+                    onClear={handleClearSearch}
+                    suggestions={searchSuggestions}
+                    suggestionsOpen={searchOpen}
+                    onSelectSuggestion={handleSelectSuggestion}
+                    onFocus={() =>
+                      searchSuggestions.length > 0 && setSearchOpen(true)
+                    }
+                    searchRef={searchRef}
+                    placeholder={`Rechercher parmi les ${isProd ? "offres" : "demandes"}...`}
+                    regions={regions}
+                    selectedRegion={primaryRegion}
+                    onRegionChange={handlePrimaryRegion}
+                    products={allProducts}
+                    selectedProduct={primaryProduct}
+                    onProductChange={handlePrimaryProduct}
+                    sortBy={primarySort}
+                    onSortChange={handlePrimarySort}
+                    sortOrder={primarySortOrder}
+                    onSortOrderChange={handlePrimarySortOrder}
+                    onReset={resetPrimaryFilters}
+                  />
                 </CardContent>
               </Card>
 
@@ -1436,10 +1745,10 @@ export default function Dashboard() {
                   <CardContent className="py-20 text-center">
                     <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
-                      Aucune donnée disponible
+                      Aucun résultat
                     </h3>
                     <p className="text-muted-foreground text-sm">
-                      Les annonces des autres utilisateurs apparaîtront ici.
+                      Essayez de modifier vos filtres ou votre recherche.
                     </p>
                   </CardContent>
                 </Card>
@@ -1447,28 +1756,26 @@ export default function Dashboard() {
                 <>
                   <p className="text-sm text-muted-foreground">
                     <span className="font-semibold text-foreground">
-                      {filterBySearch(primaryItems).length}
+                      {paginationData.primary.total}
                     </span>{" "}
-                    annonce(s) sur le marché
+                    annonce(s) trouvée(s)
                   </p>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filterBySearch(primaryItems).map((item) => (
+                    {primaryItems.map((item) => (
                       <Card
                         key={item.id}
                         className="hover:shadow-lg transition-all border hover:border-primary/30 group"
                       >
                         <CardContent className="p-5">
-                          {/* Image si disponible — Analyse marché */}
                           {item.image_base64 && (
                             <div className="w-full h-28 overflow-hidden rounded-xl mb-3">
                               <img
-                                src={`data:image/jpeg;base64,${item.image_base64}`}
+                                src={item.image_base64}
                                 alt={item.product?.nom}
                                 className="w-full h-full object-cover"
                               />
                             </div>
                           )}
-
                           <div className="flex items-start gap-3 mb-4 pb-3 border-b">
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
                               {isProd
@@ -1487,23 +1794,19 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
-
                           <div className="space-y-2.5">
                             <p className="font-bold">
                               {item.product?.nom ||
                                 `Produit #${item.product_id}`}
                             </p>
-
-                            {/* Description */}
                             {item.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                              <p className="text-xs text-muted-foreground line-clamp-2">
                                 {item.description}
                               </p>
                             )}
-
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div className="flex flex-col gap-0.5">
-                                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                <span className="text-[10px] text-muted-foreground uppercase">
                                   Quantité
                                 </span>
                                 <span className="font-semibold">
@@ -1511,7 +1814,7 @@ export default function Dashboard() {
                                 </span>
                               </div>
                               <div className="flex flex-col gap-0.5">
-                                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                <span className="text-[10px] text-muted-foreground uppercase">
                                   {isProd ? "Prix" : "Budget"}
                                 </span>
                                 <span className="font-semibold text-green-600">
@@ -1524,7 +1827,6 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </div>
-
                           <div className="pt-3 border-t mt-3 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">
                               {new Date(item.created_at).toLocaleDateString(
@@ -1563,44 +1865,35 @@ export default function Dashboard() {
                 className={`shadow-sm ${isProd ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200" : "bg-gradient-to-r from-orange-50 to-red-50 border-orange-200"}`}
               >
                 <CardContent className="pt-6">
-                  <div className="flex items-center gap-4">
-                    <SearchBarWithTrie
-                      value={searchQuery}
-                      onChange={handleSearch}
-                      suggestions={searchSuggestions}
-                      suggestionsOpen={searchOpen}
-                      onSelectSuggestion={(s) => {
-                        setSearchQuery(s);
-                        setSearchOpen(false);
-                      }}
-                      onClear={() => {
-                        setSearchQuery("");
-                        setSearchSuggestions([]);
-                        setSearchOpen(false);
-                      }}
-                      onFocus={() =>
-                        searchSuggestions.length > 0 && setSearchOpen(true)
-                      }
-                      placeholder={
-                        isProd
-                          ? "Rechercher une demande d'achat..."
-                          : "Rechercher un produit local..."
-                      }
-                      searchRef={searchRef}
-                    />
-                    <div
-                      className={`flex items-center gap-2 text-sm font-medium ${isProd ? "text-blue-700" : "text-orange-700"}`}
-                    >
-                      {isProd ? (
-                        <Users className="w-4 h-4" />
-                      ) : (
-                        <Flame className="w-4 h-4" />
-                      )}
-                      {isProd
-                        ? "Demandes d'achat en direct"
-                        : "Récoltes disponibles maintenant"}
-                    </div>
-                  </div>
+                  <FilterBar
+                    searchValue={searchQuery}
+                    onSearchChange={handleSearch}
+                    onSearch={triggerSearch}
+                    onClear={handleClearSearch}
+                    suggestions={searchSuggestions}
+                    suggestionsOpen={searchOpen}
+                    onSelectSuggestion={handleSelectSuggestion}
+                    onFocus={() =>
+                      searchSuggestions.length > 0 && setSearchOpen(true)
+                    }
+                    searchRef={searchRef}
+                    placeholder={
+                      isProd
+                        ? "Rechercher une demande d'achat..."
+                        : "Rechercher un produit local..."
+                    }
+                    regions={regions}
+                    selectedRegion={marketRegion}
+                    onRegionChange={handleMarketRegion}
+                    products={allProducts}
+                    selectedProduct={marketProduct}
+                    onProductChange={handleMarketProduct}
+                    sortBy={marketSort}
+                    onSortChange={handleMarketSort}
+                    sortOrder={marketSortOrder}
+                    onSortOrderChange={handleMarketSortOrder}
+                    onReset={resetMarketFilters}
+                  />
                 </CardContent>
               </Card>
 
@@ -1619,11 +1912,10 @@ export default function Dashboard() {
                   <CardContent className="py-20 text-center">
                     <Store className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-xl font-semibold mb-2">
-                      Aucune annonce disponible
+                      Aucun résultat
                     </h3>
                     <p className="text-muted-foreground text-sm">
-                      Revenez bientôt — de nouvelles annonces sont publiées
-                      chaque jour.
+                      Essayez de modifier vos filtres ou votre recherche.
                     </p>
                   </CardContent>
                 </Card>
@@ -1631,12 +1923,12 @@ export default function Dashboard() {
                 <>
                   <p className="text-sm text-muted-foreground">
                     <span className="font-semibold text-foreground">
-                      {filterBySearch(marketplaceItems).length}
+                      {paginationData.market.total}
                     </span>{" "}
                     {isProd ? "demande(s) d'achat" : "récolte(s) disponible(s)"}
                   </p>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filterBySearch(marketplaceItems).map((item) => {
+                    {marketplaceItems.map((item) => {
                       const contact = isProd ? item.acheteur : item.producteur;
                       const isOfferItem = !isProd;
                       return (
@@ -1648,8 +1940,7 @@ export default function Dashboard() {
                             className={`absolute top-0 right-0 w-16 h-16 opacity-10 rounded-bl-full ${isProd ? "bg-blue-500" : "bg-orange-500"}`}
                           />
                           <CardContent className="p-5 relative">
-                            {/* Header */}
-                            <div className="flex items-start gap-3 mb-4 pb-3 border-b">
+                            <div className="flex items-start gap-3 mb-3 pb-3 border-b">
                               <div
                                 className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm flex-shrink-0 ${isProd ? "bg-gradient-to-br from-blue-500 to-indigo-600" : "bg-gradient-to-br from-orange-400 to-red-500"}`}
                               >
@@ -1673,9 +1964,8 @@ export default function Dashboard() {
                               </div>
                             </div>
 
-                            {/* Image si disponible — Marketplace */}
                             {item.image_base64 && (
-                              <div className="relative w-full h-36 overflow-hidden rounded-xl mb-3">
+                              <div className="relative w-full h-32 overflow-hidden rounded-xl mb-3">
                                 <img
                                   src={item.image_base64}
                                   alt={item.product?.nom}
@@ -1685,22 +1975,18 @@ export default function Dashboard() {
                               </div>
                             )}
 
-                            {/* Produit */}
                             <div className="mb-3">
                               <p className="font-bold text-base">
                                 {item.product?.nom}
                               </p>
-
-                              {/* Description */}
                               {item.description && (
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                   {item.description}
                                 </p>
                               )}
-
                               <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
                                 <div className="flex flex-col gap-0.5 p-2 bg-muted/50 rounded-lg">
-                                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                  <span className="text-[10px] text-muted-foreground uppercase">
                                     Quantité
                                   </span>
                                   <span className="font-semibold flex items-center gap-1">
@@ -1710,7 +1996,7 @@ export default function Dashboard() {
                                   </span>
                                 </div>
                                 <div className="flex flex-col gap-0.5 p-2 bg-green-50 rounded-lg">
-                                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                  <span className="text-[10px] text-muted-foreground uppercase">
                                     {isProd ? "Budget max" : "Prix / unité"}
                                   </span>
                                   <span className="font-bold text-green-600 flex items-center gap-1">
@@ -1724,7 +2010,6 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              {/* Stock restant */}
                               {isOfferItem &&
                                 item.quantite_restante !== null &&
                                 item.quantite_restante !== undefined && (
@@ -1735,7 +2020,6 @@ export default function Dashboard() {
                                   </p>
                                 )}
 
-                              {/* Badges livraison/retrait — acheteur voit des offres */}
                               {!isProd && (
                                 <div className="flex gap-1.5 mt-2 flex-wrap">
                                   {item.livraison_possible && (
@@ -1746,7 +2030,7 @@ export default function Dashboard() {
                                   )}
                                   {item.retrait_possible && (
                                     <span className="inline-flex items-center gap-1 text-[10px] bg-muted/60 text-muted-foreground px-2 py-1 rounded-lg">
-                                      <Home className="w-3 h-3" />
+                                      <HomeIcon className="w-3 h-3" />
                                       Retrait sur place
                                     </span>
                                   )}
@@ -1762,7 +2046,6 @@ export default function Dashboard() {
                                 </div>
                               )}
 
-                              {/* Badge fréquence — producteur voit des demandes */}
                               {isProd &&
                                 item.frequence &&
                                 item.frequence !== "unique" && (
@@ -1779,7 +2062,6 @@ export default function Dashboard() {
                                 )}
                             </div>
 
-                            {/* Footer */}
                             <div className="pt-3 border-t flex items-center justify-between gap-2">
                               <span className="text-xs text-muted-foreground">
                                 {new Date(item.created_at).toLocaleDateString(
@@ -1788,7 +2070,6 @@ export default function Dashboard() {
                                 )}
                               </span>
                               <div className="flex gap-1.5">
-                                {/* Acheteur voit des offres → Commander */}
                                 {!isProd && (
                                   <Button
                                     size="sm"
@@ -1807,7 +2088,6 @@ export default function Dashboard() {
                                   </Button>
                                 )}
 
-                                {/* Producteur voit des demandes → Proposer mon offre */}
                                 {isProd ? (
                                   (() => {
                                     const myOffer = prodHasOfferFor(
@@ -1827,7 +2107,7 @@ export default function Dashboard() {
                                           }
                                         >
                                           <Star className="w-3.5 h-3.5" />
-                                          Proposer mon offre
+                                          Proposer
                                         </Button>
                                         <Button
                                           size="sm"
@@ -1849,9 +2129,9 @@ export default function Dashboard() {
                                         </Button>
                                       </>
                                     ) : (
-                                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 rounded-lg border border-dashed text-xs text-muted-foreground">
-                                        <Package className="w-3.5 h-3.5 flex-shrink-0" />
-                                        Vous n'avez pas ce produit en stock
+                                      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-muted/60 rounded-lg border border-dashed text-xs text-muted-foreground">
+                                        <Package className="w-3 h-3 flex-shrink-0" />
+                                        Pas en stock
                                       </div>
                                     );
                                   })()
@@ -1890,22 +2170,16 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── SUGGESTIONS ── */}
           {activeTab === "suggestions" && (
             <SuggestionsTab user={user} onRefresh={refreshAll} />
           )}
-
-          {/* ── NÉGOCIATIONS ── */}
           {activeTab === "negociations" && (
             <NegociationsPanel user={user} onRefresh={refreshAll} />
           )}
-
-          {/* ── COMMANDES ── */}
           {activeTab === "commandes" && (
             <CommandesPage user={user} onRefresh={refreshAll} />
           )}
 
-          {/* ── ROUTE ── */}
           {activeTab === "route" && (
             <Card className="shadow-lg">
               <CardContent className="py-20 text-center">
@@ -1917,8 +2191,7 @@ export default function Dashboard() {
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-4 text-sm">
                   Planifiez vos tournées de {isProd ? "livraison" : "collecte"}{" "}
-                  de manière optimale. Notre algorithme calcule le chemin le
-                  plus court pour visiter plusieurs points en une seule sortie.
+                  de manière optimale.
                 </p>
                 <Badge variant="secondary" className="px-4 py-1.5 text-sm">
                   Disponible prochainement
@@ -1931,7 +2204,7 @@ export default function Dashboard() {
 
       {/* ── Dialog Détails ── */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[80vw] max-w-[80vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="w-5 h-5 text-primary" />
@@ -1947,7 +2220,6 @@ export default function Dashboard() {
                 })}
             </DialogDescription>
           </DialogHeader>
-
           {selectedItem && displayUser && (
             <div className="space-y-4">
               <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-xl border border-primary/20">
@@ -1971,7 +2243,6 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 border rounded-xl">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
@@ -2020,7 +2291,6 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
-
               <div className="flex gap-2">
                 {!isProd && selectedItem.statut !== "epuise" && (
                   <Button
@@ -2060,7 +2330,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── ProductSuggestionsDialog ── */}
       <ProductSuggestionsDialog
         open={productSuggestionsOpen}
         onClose={() => setProductSuggestionsOpen(false)}
@@ -2073,7 +2342,6 @@ export default function Dashboard() {
         }}
       />
 
-      {/* ── NegociationChat (depuis suggestions) ── */}
       <NegociationChat
         open={negociationOpen}
         onClose={() => setNegociationOpen(false)}
@@ -2085,7 +2353,6 @@ export default function Dashboard() {
         matchStatut={negociationData?.match_statut}
       />
 
-      {/* ── NegociationChat (depuis marketplace) ── */}
       <NegociationChat
         open={marketNegociatOpen}
         onClose={() => {
@@ -2107,7 +2374,6 @@ export default function Dashboard() {
         producteurRegion={marketNegociatData?.producteur_region}
       />
 
-      {/* ── CheckoutDialog ── */}
       {checkoutOffer && (
         <CheckoutDialog
           open={checkoutOpen}
@@ -2124,7 +2390,6 @@ export default function Dashboard() {
         />
       )}
 
-      {/* ── CrudDialog ── */}
       <CrudDialog
         open={crudOpen}
         onClose={() => setCrudOpen(false)}

@@ -33,9 +33,7 @@ import {
   Truck,
   Home,
   Star,
-  TrendingUp,
   Phone,
-  Calendar,
   RotateCcw,
 } from "lucide-react";
 

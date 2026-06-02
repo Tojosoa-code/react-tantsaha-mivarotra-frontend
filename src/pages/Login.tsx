@@ -26,7 +26,7 @@ export default function Login() {
 
   // Gestion de la redirection avec nettoyage pour la performance
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
 
     if (isRedirecting) {
       // On attend 3 secondes pour laisser l'animation de la plante se jouer

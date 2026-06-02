@@ -5,7 +5,6 @@ import NegociationChat from "@/components/NegociationChat";
 import {
   MessageCircle,
   Package,
-  Clock,
   CheckCircle2,
   Heart,
   Loader2,

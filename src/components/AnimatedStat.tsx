@@ -3,12 +3,7 @@ import useInView from "@/hooks/useInView";
 import { useEffect } from "react";
 import { Card, CardContent } from "./ui/card";
 
-export default function AnimatedStat({
-  icon: Icon,
-  value,
-  suffix = "",
-  label,
-}: any) {
+export default function AnimatedStat({ icon: Icon, value, label }: any) {
   const { ref, isInView } = useInView();
   const numericValue = parseInt(value.replace(/\D/g, ""));
   const { count, setHasStarted } = useCountUp(numericValue, 2000);
